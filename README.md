@@ -54,7 +54,7 @@ docker run \
   ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:latest
 ```
 
-## JavaScript Example
+## JavaScript Example: Open and close GMX position
 
 After GMX CCXT Middleware Server is running, you can interact with GMX like with any other CCXT supported exchange.
 
@@ -66,6 +66,91 @@ Run it with the command below. Run in another terminal so you can watch the serv
 
 ```bash
 GMX_SERVER_URL="http://127.0.0.1:8000" GMX_SERVER_TOKEN="change-me" node docs/example.js
+```
+
+You should see output like:
+
+```
+
+Wallet Context
+  Server: http://127.0.0.1:8000
+  Trade mode: open_and_close
+  Chain: arbitrum (42161)
+  Wallet: 0xdcc6D3...5622c6
+  Expected wallet: not set
+  Gas balance: 0.022994 ETH
+
+Wallet Balances
+  ETH: 0.022994 ETH free
+  USDC: $36.25 free
+  Minimum required: 0.002 ETH gas, $3.50 collateral
+
+Positions Before Open
+  Positions: none
+
+Top Markets By Open Interest
+  1. ETH/USDC:USDC | OI $59,041,196.81
+  2. BTC/USDC:USDC | OI $21,781,466.11
+  3. XRP/USDC:USDC | OI $3,827,729.41
+  4. HYPE/USDC:USDC | OI $1,389,335.64
+  5. SUI/USDC:USDC | OI $889,638.38
+
+Open Order
+  Symbol: ETH/USDC:USDC
+  Side: buy
+  Status: closed
+  Size: $5.00
+  Filled: 0.00232766
+  Average price: $2,148.078865
+  Fee: 0.002 USDC + 0.000141 ETH execution
+  Created at: 2026-03-20T21:54:09.332000Z
+  Submit tx: 0xbd51abbc04...a7639c96c9
+  Execution tx: 0xa88f362f85...9a705a648c
+
+Positions After Open
+  1. ETH/USDC:USDC long | size $5.00 | entry $2,148.681108 | mark $2,148.6183 | PnL $0.00 (0%) | lev 2.0016x
+
+Close Order
+  Symbol: ETH/USDC:USDC
+  Side: sell
+  Status: closed
+  Size: $5.00
+  Filled: 0.00232708
+  Average price: $2,148.6183
+  Fee: 0.003 USDC + 0.000141 ETH execution
+  Created at: 2026-03-20T21:54:16.592000Z
+  Submit tx: 0x9f926cd67c...0276fdaa73
+  Execution tx: 0x3cf2bb33a1...6c16442cb2
+
+Positions After Close
+  1. ETH/USDC:USDC long | size $5.00 | entry $2,148.681108 | mark $2,148.652726 | PnL $0.00 (0%) | lev 2.0016x
+Example trade flow completed.
+➜  gmx-ccxt-server git:(main) ✗
+➜  gmx-ccxt-server git:(main) ✗ GMX_SERVER_URL="http://127.0.0.1:8000" GMX_SERVER_TOKEN="change-me" node docs/example.js
+Warning: this script places a real GMX trade through the configured server wallet.
+
+Wallet Context
+  Server: http://127.0.0.1:8000
+  Trade mode: open_and_close
+  Chain: arbitrum (42161)
+  Wallet: 0xdcc6D3...5622c6
+  Expected wallet: not set
+  Gas balance: 0.022723 ETH
+
+Wallet Balances
+  ETH: 0.022723 ETH free
+  USDC: $36.25 free
+  Minimum required: 0.002 ETH gas, $3.50 collateral
+
+Positions Before Open
+  Positions: none
+
+Top Markets By Open Interest
+  1. ETH/USDC:USDC | OI $59,042,436.00
+  2. BTC/USDC:USDC | OI $21,821,067.99
+  3. XRP/USDC:USDC | OI $3,827,729.41
+  4. HYPE/USDC:USDC | OI $1,389,335.64
+  5. SUI/USDC:USDC | OI $889,638.38
 ```
 
 ## Ethereum balances to understand
