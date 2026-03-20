@@ -2,9 +2,15 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 // Base URL for the Dockerised GMX CCXT Middleware Server.
-const GMX_SERVER_URL = process.env.GMX_SERVER_URL || process.env.BRIDGE_URL || "http://127.0.0.1:8000";
+const GMX_SERVER_URL =
+  process.env.GMX_SERVER_URL ||
+  process.env.BRIDGE_URL ||
+  "http://127.0.0.1:8000";
 // Optional bearer token configured on the server container.
-const GMX_SERVER_TOKEN = process.env.GMX_SERVER_TOKEN || process.env.BRIDGE_TOKEN || "";
+const GMX_SERVER_TOKEN =
+  process.env.GMX_SERVER_TOKEN || process.env.BRIDGE_TOKEN || "";
+// Optional expected wallet address for an extra sanity check against the server-reported address.
+const GMX_WALLET_ADDRESS = (process.env.GMX_WALLET_ADDRESS || "").trim();
 // Hardcoded GMX ETH perpetual symbol used in this example.
 const SYMBOL = "ETH/USDC:USDC";
 // Hardcoded example trade size expressed in USD.
@@ -47,6 +53,38 @@ function assertMinimumBalance(currencyBalance, minimumRequired, purpose) {
   }
 }
 
+function getGasStatusBalance(status) {
+  const info = status?.info ?? {};
+  return {
+    currency: info.gasTokenSymbol ?? "native gas token",
+    free: Number(info.gasTokenBalance ?? 0),
+    used: 0,
+    total: Number(info.gasTokenBalance ?? 0),
+  };
+}
+
+function normaliseAddress(address) {
+  return String(address || "")
+    .trim()
+    .toLowerCase();
+}
+
+async function fetchServerPing() {
+  const response = await fetch(`${GMX_SERVER_URL.replace(/\/+$/, "")}/ping`, {
+    headers: GMX_SERVER_TOKEN
+      ? { Authorization: `Bearer ${GMX_SERVER_TOKEN}` }
+      : {},
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to query GMX CCXT Middleware Server /ping: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  return await response.json();
+}
+
 /*
 Purpose:
 Demonstrate a real GMX CCXT Middleware Server trading flow end to end.
@@ -70,15 +108,39 @@ async function main() {
     timeout: 180000,
   });
 
+  const serverPing = await fetchServerPing();
+  const status = await exchange.fetchStatus();
+  const gasBalance = getGasStatusBalance(status);
+  console.log("GMX CCXT Middleware Server wallet context:", {
+    serverUrl: GMX_SERVER_URL,
+    chain: serverPing.chain ?? null,
+    chainId: serverPing.chainId ?? null,
+    walletConfigured: Boolean(serverPing.walletConfigured),
+    walletAddress: serverPing.walletAddress ?? null,
+    gasTokenSymbol: status?.info?.gasTokenSymbol ?? null,
+    gasTokenBalance: status?.info?.gasTokenBalance ?? null,
+    expectedWalletAddress: GMX_WALLET_ADDRESS || null,
+  });
+
+  if (
+    GMX_WALLET_ADDRESS &&
+    serverPing.walletAddress &&
+    normaliseAddress(GMX_WALLET_ADDRESS) !==
+      normaliseAddress(serverPing.walletAddress)
+  ) {
+    throw new Error(
+      `Server wallet address ${serverPing.walletAddress} does not match GMX_WALLET_ADDRESS ${GMX_WALLET_ADDRESS}.`,
+    );
+  }
+
   const balance = await exchange.fetchBalance();
-  const ethBalance = getCurrencyBalance(balance, "ETH");
   const usdcBalance = getCurrencyBalance(balance, "USDC");
   console.log("Wallet balances:", {
-    gas: ethBalance,
+    gas: gasBalance,
     collateral: usdcBalance,
   });
 
-  assertMinimumBalance(ethBalance, MIN_ETH_GAS_BALANCE, "Arbitrum gas");
+  assertMinimumBalance(gasBalance, MIN_ETH_GAS_BALANCE, "Arbitrum gas");
   assertMinimumBalance(usdcBalance, MIN_USDC_BALANCE, "USDC collateral");
 
   const positionsBeforeOpen = await exchange.fetchPositions([SYMBOL]);

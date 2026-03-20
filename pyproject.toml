@@ -12,6 +12,7 @@ packages = [
 python = ">=3.11,<4"
 fastapi = "^0.115.12"
 pydantic = "^2.11.1"
+rich = "^14.3.3"
 uvicorn = { version = "^0.34.0", extras = ["standard"] }
 web3-ethereum-defi = { path = "./web3-ethereum-defi", develop = true, extras = ["ccxt"] }
 

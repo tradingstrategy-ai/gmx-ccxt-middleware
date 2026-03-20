@@ -24,6 +24,7 @@ set -euo pipefail
 # Optional environment:
 # - LOCAL_IMAGE_TAG
 # - COMPOSE_PROJECT_NAME
+# - GMX_DOCKER_BUILD_CACHE_DIR
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -37,6 +38,11 @@ COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-gmx-ccxt-acceptance}"
 # Build the image under a local tag so Compose can be forced to use the current
 # checkout instead of the published GHCR image.
 LOCAL_IMAGE_TAG="${LOCAL_IMAGE_TAG:-gmx-ccxt-middleware:local}"
+
+# Persist the local Docker BuildKit cache on the host so repeated acceptance
+# runs can reuse Poetry and pip downloads instead of starting from scratch.
+GMX_DOCKER_BUILD_CACHE_DIR="${GMX_DOCKER_BUILD_CACHE_DIR:-${HOME}/.cache/gmx-ccxt-server/docker-buildx}"
+GMX_DOCKER_BUILDER_NAME="${GMX_DOCKER_BUILDER_NAME:-gmx-ccxt-acceptance-builder}"
 
 # Intentionally use the checked-in Docker Compose default publish address so
 # this script also validates the default bridge URL and no-auth startup path.
@@ -59,6 +65,55 @@ require_env() {
         echo "Required environment variable is not set: ${variable_name}" >&2
         exit 1
     fi
+}
+
+build_local_image() {
+    local cache_dir="${GMX_DOCKER_BUILD_CACHE_DIR}"
+    local cache_dir_tmp="${cache_dir}.tmp"
+    local builder_name="${GMX_DOCKER_BUILDER_NAME}"
+
+    mkdir -p "$(dirname "${cache_dir}")"
+
+    if docker buildx version >/dev/null 2>&1; then
+        if ! docker buildx inspect "${builder_name}" >/dev/null 2>&1; then
+            docker buildx create --name "${builder_name}" --driver docker-container >/dev/null
+        fi
+
+        docker buildx inspect "${builder_name}" --bootstrap >/dev/null
+        rm -rf "${cache_dir_tmp}"
+
+        local build_args=(
+            buildx
+            build
+            --builder
+            "${builder_name}"
+            --load
+            -t
+            "${LOCAL_IMAGE_TAG}"
+        )
+
+        if [[ -d "${cache_dir}" ]]; then
+            build_args+=(
+                --cache-from
+                "type=local,src=${cache_dir}"
+            )
+        fi
+
+        build_args+=(
+            --cache-to
+            "type=local,dest=${cache_dir_tmp},mode=max"
+            .
+        )
+
+        DOCKER_BUILDKIT=1 docker "${build_args[@]}"
+
+        rm -rf "${cache_dir}"
+        mv "${cache_dir_tmp}" "${cache_dir}"
+        return
+    fi
+
+    echo "docker buildx not available; falling back to docker build without a persisted host cache" >&2
+    DOCKER_BUILDKIT=1 docker build -t "${LOCAL_IMAGE_TAG}" .
 }
 
 cleanup() {
@@ -100,7 +155,7 @@ echo "==> Rebuilding generated CCXT adapter"
 make ccxt-build
 
 echo "==> Building local Docker image ${LOCAL_IMAGE_TAG}"
-docker build -t "${LOCAL_IMAGE_TAG}" .
+build_local_image
 
 echo "==> Starting docker-compose stack on ${BRIDGE_URL}"
 

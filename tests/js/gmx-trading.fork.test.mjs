@@ -52,7 +52,7 @@ async function startForkBridge({ privateKey = '', walletAddress = '' } = {}) {
 
 async function expectExchangeError(promise, messagePattern) {
     await assert.rejects(promise, (error) => {
-        assert.ok(['ExchangeError', 'RequestTimeout'].includes(error.name));
+        assert.ok(['ExchangeError', 'PermissionDenied', 'RequestTimeout'].includes(error.name));
         assert.match(error.message, messagePattern);
         return true;
     });
@@ -70,7 +70,7 @@ runForkTest('fork trading: order methods reject cleanly in view-only mode', asyn
         for (const [label, invoke] of ORDER_METHODS) {
             await expectExchangeError(
                 invoke(exchange),
-                /Wallet required for order creation/,
+                /read-only mode|GMX_PRIVATE_KEY is not configured/,
             );
         }
     } finally {

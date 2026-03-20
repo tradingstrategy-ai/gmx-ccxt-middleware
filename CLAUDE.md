@@ -122,3 +122,84 @@ make test-smoke-live
 GMX order execution depends on keeper and oracle mechanics. Anvil is suitable for read-heavy coverage and some pending-order lifecycle checks, but it is not the default place to require successful end-to-end GMX trade execution.
 
 Do not treat failed live execution on a plain fork as an automatic GMX CCXT Middleware Server or adapter regression unless the test specifically sets up the extra execution machinery required by GMX.
+
+## Formatting code
+
+Run ruff to format code using Poetry:
+
+```shell
+poetry run ruff format
+```
+
+## Pull requests
+
+- When opening a pull request, include why this PR was made, only only what was changed - use ask user tool for more information if needed
+- Only push changes to remote when asked, never update pull requess automatically.
+- Never push directly to a master if not told explicitly
+- Do not include test or verification plan in a pull request description
+- If the user ask to open a pull request as feature then start the PR title with "feat:" prefix and also add one line about the feature into `CHANGELOG.md`
+- Each changelog entry should follow the date of the PR in YYYY-MM-DD format. Example: Something was updated (2026-01-01).
+- Before opening or updating a pull request, format the code
+- When merging pull request, squash and merge commits and use the PR description as the commit message
+- If continuous integration (CI) tests fail on your PR, and they are marked flaky, run tests locally to repeat the issue if it is real flakiness or regression
+
+## Specific rules
+
+### Python rules
+
+- For data structures, prefer `dataclass(slots=True)`
+- Use threaded instead of async Python code
+- Always type hint function arguments and return values
+- Try to use Python and Pandas `apply()` and other functional helpers instead of slow for and while loops
+- Use `any()` and `all()` with generators and list comprehension when checking if a collection member has one or more matches, instead of using slow for loops
+- All functions that do network reads to get data should be prefixed with `fetch_` instead of `get_`
+- Always try to return `Iterator` instead of `list` from a function call to make functions faster
+- For long runnign for loops, use `tqdm` and `tqdm_loggable.auto` module for progress bar. As an example, see `lead_scan_core.py`.
+- For visualusations, use Plotly. For chart titles, use heading case as explained above.
+- Use module level imports, not function level lazy imports, whenever possible
+- Never write generic `Exception e:` catch but always catch a specific exception if we can
+- Never silently swallow exceptions and th
+
+### Code comments
+
+- For code comments, Use Sphinx restructured text style
+- For documenting dataclass and Enum members, use Sphinx `#: comment here` line comment above variable, not `:param:`
+- If a. class function overloads a function inherited from the parent, and there is nothing to comment, do not repeat the code comment and leave it empty instead
+
+### Type hinting
+
+- Use `HexAddress` instead of `str` for blockchain addresses
+- For percent like numbers, do not use raw float, but use `eth_defi.types.Percent` type alias
+
+### Logging
+
+- For logging, use the module level `logger = logging.getLogger(__name__)` pattern
+- When logging using `logger.info()`, `logging.debug()` or similar,
+  prefer %s and %f unexpanded string syntax instead of Python string interpolation, because of performance reasons
+
+### Documentation
+
+- All API modules should have stub entry under `docs/source/api` and cross-referenced in `docs/source/api/index` table of contents
+- See `docs/source/api/index.rst` and `docs/source/api/lagoon/index.rst` as examples
+- When writing documentation, in sentences, include inline links to the source pages. Link each page only once, preferably earler in the text.
+
+### datetime
+
+- Use naive UTC datetimes everywhere
+- When using datetime class use `import datetime.datetime` and use `datetime.datetime` and `datetime.timedelta` as type hints
+- Instead of `datetime.datetime.utcnow()` use `native_datetime_utc_now()` that is compatible across Python versions
+
+### Enum
+
+- For string enums, both members and values must in snake_case
+
+### Pytest
+
+- Never use test classes in pytest
+- `pytest` tests should not have stdout output like `print`
+- Instead of manual float fuzzy comparison like `assert abs(aave_total_pnl - 96.6087) < 0.01` use `pytest.approx()`
+- For DuckDB testing, make sure the database is always closed using finally clause or fixtures
+- Always use fixture and test functions, never use test classes
+- For Anvil mainnet fork based tests, whici use a fixed block number, in asserts check for absolute number values instead of relative values like above zero, because values never change.
+  Expect for Monad, as Monad blockchain does not support archive nodes and historical state.
+- For reuseable testing code, use `testing` modules under `eth_defi` - do not nyt try to import "tests" as it does not work with pytest

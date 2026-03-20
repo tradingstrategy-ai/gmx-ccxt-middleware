@@ -36,10 +36,11 @@ def serialize_for_json(value: Any) -> Any:
 
 
 def serialize_exception(exc: Exception) -> dict[str, Any]:
+    ccxt_error = getattr(exc, "ccxt_error", exc.__class__.__name__)
     return {
         "type": exc.__class__.__name__,
         "message": str(exc),
-        "ccxt_error": exc.__class__.__name__,
+        "ccxt_error": ccxt_error,
         "details": {
             "args": [serialize_for_json(arg) for arg in getattr(exc, "args", ())],
         },
