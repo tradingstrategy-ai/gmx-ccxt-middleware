@@ -29,6 +29,17 @@ require_command() {
     fi
 }
 
+has_blocking_worktree_changes() {
+    local status_output
+
+    status_output="$(
+        git status --short --untracked-files=normal \
+        | grep -vE '^ [m?] web3-ethereum-defi$' || true
+    )"
+
+    [[ -n "${status_output}" ]]
+}
+
 PUSH_ONLY=0
 ASSUME_YES=0
 
@@ -67,7 +78,7 @@ if [[ -z "${current_branch}" ]]; then
     exit 1
 fi
 
-if ! git diff --quiet || ! git diff --cached --quiet; then
+if has_blocking_worktree_changes; then
     echo "Working tree is not clean. Commit or stash changes before releasing." >&2
     exit 1
 fi
