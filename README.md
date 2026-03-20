@@ -22,7 +22,7 @@ The server image is published to GitHub Container Registry:
 - `ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:vN`
 - `ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:main`
 
-For configuration, development, architecture, and tests, see [configuration.md](docs/config.md), [development.md](docs/development.md), [architecture.md](docs/architecture.md), and [tests.md](docs/tests.md).
+For configuration, development, architecture, API details, and tests, see [configuration.md](docs/config.md), [development.md](docs/development.md), [architecture.md](docs/architecture.md), [api.md](docs/api.md), and [tests.md](docs/tests.md).
 
 ## Benefits
 
@@ -39,7 +39,9 @@ For the full breakdown, sequence diagrams, and external integration notes, see [
 
 ## Run with Docker
 
-Pull the published image from GitHub Container Registry, then run it directly with Docker.
+Pull the published image from [GitHub Container Registry](https://docs.github.com/packages/working-with-a-github-packages-registry/working-with-the-container-registry), then run it directly with Docker.
+
+Before the first pull, create a GitHub personal access token with package read access and log Docker into `ghcr.io`; see the [GHCR login guide](https://tradingstrategy.ai/docs/deployment/docker-images.html#login-to-ghcr).
 
 ```bash
 docker pull ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:latest
@@ -50,24 +52,6 @@ docker run --detach --rm \
   --env GMX_PRIVATE_KEY="0xyourmainnetprivatekey" \
   --env GMX_SERVER_AUTH_TOKEN="change-me" \
   ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:latest
-```
-
-`GMX_RPC_URL` is optional there and defaults to the public Arbitrum RPC. `GMX_EXECUTION_BUFFER` is also optional and defaults to the safe built-in value `2.2`. The published Docker setup binds to `0.0.0.0:8000` inside the container and is published on `127.0.0.1:8000` by default in the example above.
-
-The `latest` tag is updated automatically whenever a new numbered release tag such as `v1`, `v2`, or `v3` is published.
-
-The GMX CCXT Middleware Server exposes:
-
-- `GET /ping` in [ping.py](src/gmx_ccxt_server/routes/ping.py)
-- `GET /describe` in [describe.py](src/gmx_ccxt_server/routes/describe.py)
-- `POST /call` in [call.py](src/gmx_ccxt_server/routes/call.py)
-
-Example health check:
-
-```bash
-curl \
-  -H "Authorization: Bearer ${GMX_SERVER_AUTH_TOKEN}" \
-  http://127.0.0.1:8000/ping
 ```
 
 ## JavaScript Example
@@ -115,3 +99,7 @@ Example: to mint `999` units of `USDC.SG`, call `mint(your_address, 999000000)`,
 Pay close attention to the collateral symbol used by the market. On Arbitrum Sepolia, GMX commonly uses `USDC.SG` rather than plain `USDC`, so using the wrong stablecoin variant can cause order validation to fail. If a market is quoted like `ETH/USDC.SG:USDC.SG`, fund the wallet with `USDC.SG` and use `USDC.SG` as the collateral symbol in your order parameters.
 
 These Sepolia funding notes are based on the upstream GMX tutorial material in [`README-GMX-Lagoon.md`](web3-ethereum-defi/eth_defi/gmx/README-GMX-Lagoon.md) and [`lagoon-multichain.rst`](web3-ethereum-defi/docs/source/tutorials/lagoon-multichain.rst).
+
+## API
+
+For endpoint details and a basic health-check example, see [api.md](docs/api.md).
