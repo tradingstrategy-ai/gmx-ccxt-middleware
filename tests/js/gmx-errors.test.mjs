@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { AuthenticationError, NotSupported } from '../../ccxt/js/src/base/errors.js';
 import {
     importGeneratedExchange,
-    makeConfigText,
+    makeBridgeEnv,
     startAnvilFork,
     startBridgeServer,
 } from './helpers/bridge-test-helpers.mjs';
@@ -35,13 +35,13 @@ Start a fork bridge, call fetchOrderBook, and assert the adapter raises NotSuppo
 runForkTest('unsupported fetchOrderBook maps to NotSupported', async () => {
     const authToken = 'errors-not-supported-token';
     const anvil = await startAnvilFork(forkRpc);
-    const configText = makeConfigText({
+    const env = makeBridgeEnv({
         rpcUrl: anvil.rpcUrl,
         authToken,
         chainId: 42161,
         preloadMarkets: false,
     });
-    const bridge = await startBridgeServer({ configText, token: authToken });
+    const bridge = await startBridgeServer({ env, token: authToken });
     try {
         const GmxExchange = await importGeneratedExchange();
         const exchange = makeExchange(GmxExchange, bridge.baseUrl, authToken);
@@ -65,13 +65,13 @@ Start a fork bridge, call fetchClosedOrders, and assert the adapter raises NotSu
 runForkTest('unsupported fetchClosedOrders maps to NotSupported', async () => {
     const authToken = 'errors-closed-orders-token';
     const anvil = await startAnvilFork(forkRpc);
-    const configText = makeConfigText({
+    const env = makeBridgeEnv({
         rpcUrl: anvil.rpcUrl,
         authToken,
         chainId: 42161,
         preloadMarkets: false,
     });
-    const bridge = await startBridgeServer({ configText, token: authToken });
+    const bridge = await startBridgeServer({ env, token: authToken });
     try {
         const GmxExchange = await importGeneratedExchange();
         const exchange = makeExchange(GmxExchange, bridge.baseUrl, authToken);
@@ -95,13 +95,13 @@ Start a fork bridge, use the wrong token in the adapter, and assert the resultin
 runForkTest('bridge auth failures map to AuthenticationError through the adapter', async () => {
     const authToken = 'errors-auth-token';
     const anvil = await startAnvilFork(forkRpc);
-    const configText = makeConfigText({
+    const env = makeBridgeEnv({
         rpcUrl: anvil.rpcUrl,
         authToken,
         chainId: 42161,
         preloadMarkets: false,
     });
-    const bridge = await startBridgeServer({ configText, token: authToken });
+    const bridge = await startBridgeServer({ env, token: authToken });
     try {
         const GmxExchange = await importGeneratedExchange();
         const exchange = makeExchange(GmxExchange, bridge.baseUrl, 'wrong-token');

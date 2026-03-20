@@ -1,5 +1,3 @@
-CONFIG ?= config/gmx-bridge.local.toml
-
 .PHONY: install server ccxt-build test-js test-fork test-live test-testnet test-smoke-live
 
 install:
@@ -7,7 +5,7 @@ install:
 	cd ccxt && npm install
 
 server:
-	poetry run python -m gmx_ccxt_server --config $(CONFIG)
+	poetry run python -m gmx_ccxt_server
 
 ccxt-build:
 	cd ccxt && npm run export-exchanges && npm run emitAPI && npm run tsBuild && npm run transpileRest && npm run copy-python-files

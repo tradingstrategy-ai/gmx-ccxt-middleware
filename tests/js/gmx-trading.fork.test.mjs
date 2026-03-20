@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import {
     importGeneratedExchange,
-    makeConfigText,
+    makeBridgeEnv,
     startAnvilFork,
     startBridgeServer,
 } from './helpers/bridge-test-helpers.mjs';
@@ -31,7 +31,7 @@ async function startForkBridge({ privateKey = '', walletAddress = '' } = {}) {
     const authToken = privateKey ? 'fork-private-token' : 'fork-view-token';
     const anvil = await startAnvilFork(forkRpc);
     const bridge = await startBridgeServer({
-        configText: makeConfigText({
+        env: makeBridgeEnv({
             rpcUrl: anvil.rpcUrl,
             authToken,
             privateKey,
@@ -52,7 +52,7 @@ async function startForkBridge({ privateKey = '', walletAddress = '' } = {}) {
 
 async function expectExchangeError(promise, messagePattern) {
     await assert.rejects(promise, (error) => {
-        assert.ok(['ExchangeError', 'RequestTimeout'].includes(error.name));
+        assert.ok(['ExchangeError', 'PermissionDenied', 'RequestTimeout'].includes(error.name));
         assert.match(error.message, messagePattern);
         return true;
     });
@@ -70,7 +70,7 @@ runForkTest('fork trading: order methods reject cleanly in view-only mode', asyn
         for (const [label, invoke] of ORDER_METHODS) {
             await expectExchangeError(
                 invoke(exchange),
-                /Wallet required for order creation/,
+                /read-only mode|GMX_PRIVATE_KEY is not configured/,
             );
         }
     } finally {

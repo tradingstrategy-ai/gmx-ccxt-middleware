@@ -1,0 +1,25 @@
+flowchart LR
+    classDef repo fill:#edf6ff,stroke:#24527a,stroke-width:1.5,color:#102a43;
+    classDef external fill:#fff6e5,stroke:#8a5a00,stroke-width:1.5,color:#5d3a00;
+
+    adapter["gmx exchange adapter"]
+    cli["Bridge CLI"]
+    app["FastAPI app"]
+    auth["Bearer auth check"]
+    routes["Routes<br/>/ping<br/>/describe<br/>/call"]
+    runtime["BridgeRuntime"]
+    allowlist["Allowed method list"]
+    config["Bridge config"]
+    exchange["Python GMX exchange"]
+
+    adapter --> app
+    cli --> app
+    config --> runtime
+    app --> auth
+    auth --> routes
+    routes --> runtime
+    runtime --> allowlist
+    runtime --> exchange
+
+    class adapter external;
+    class cli,app,auth,routes,runtime,allowlist,config,exchange repo;

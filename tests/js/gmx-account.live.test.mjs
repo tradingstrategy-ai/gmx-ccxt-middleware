@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
     importGeneratedExchange,
-    makeConfigText,
+    makeBridgeEnv,
     startBridgeServer,
 } from './helpers/bridge-test-helpers.mjs';
 
@@ -24,7 +24,7 @@ const runLiveAccountTest = (arbitrumRpc && hasAccountConfig) ? test : test.skip;
 
 async function createLiveAccountExchange() {
     const authToken = 'live-account-token';
-    const configText = makeConfigText({
+    const env = makeBridgeEnv({
         rpcUrl: arbitrumRpc,
         authToken,
         walletAddress,
@@ -32,7 +32,7 @@ async function createLiveAccountExchange() {
         chainId: 42161,
         preloadMarkets: false,
     });
-    const bridge = await startBridgeServer({ configText, token: authToken });
+    const bridge = await startBridgeServer({ env, token: authToken });
     const GmxExchange = await importGeneratedExchange();
     const exchange = new GmxExchange({
         bridgeUrl: bridge.baseUrl,

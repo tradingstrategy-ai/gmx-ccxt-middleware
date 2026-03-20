@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import {
     importGeneratedExchange,
-    makeConfigText,
+    makeBridgeEnv,
     pickTestSymbol,
     startAnvilFork,
     startBridgeServer,
@@ -37,13 +37,13 @@ Start the live bridge, call /describe through HTTP, and assert bridge plus excha
 */
 runLiveTest('live smoke: compiled JS adapter reads market data from Arbitrum One', async () => {
     const authToken = 'live-smoke-token';
-    const configText = makeConfigText({
+    const env = makeBridgeEnv({
         rpcUrl: arbitrumRpc,
         authToken,
         chainId: 42161,
         preloadMarkets: false,
     });
-    const bridge = await startBridgeServer({ configText, token: authToken });
+    const bridge = await startBridgeServer({ env, token: authToken });
     try {
         const response = await fetch(`${bridge.baseUrl}/describe`, {
             headers: bearerHeaders(authToken),
@@ -68,15 +68,15 @@ Start Anvil and the bridge, call health and describe, and assert authenticated a
 runForkTest('fork smoke: bridge contract endpoints work on an Anvil fork', async () => {
     const authToken = 'fork-smoke-token';
     const anvil = await startAnvilFork(arbitrumRpc);
-    const configText = makeConfigText({
+    const env = makeBridgeEnv({
         rpcUrl: anvil.rpcUrl,
         authToken,
         chainId: 42161,
         preloadMarkets: false,
     });
-    const bridge = await startBridgeServer({ configText, token: authToken });
+    const bridge = await startBridgeServer({ env, token: authToken });
     try {
-        const healthResponse = await fetch(`${bridge.baseUrl}/healthz`, {
+        const healthResponse = await fetch(`${bridge.baseUrl}/ping`, {
             headers: bearerHeaders(authToken),
         });
         assert.equal(healthResponse.status, 200);
@@ -94,7 +94,7 @@ runForkTest('fork smoke: bridge contract endpoints work on an Anvil fork', async
         assert.ok(Array.isArray(describePayload.bridge.allowedMethods));
         assert.equal(describePayload.exchange.id, 'gmx');
 
-        const unauthorizedResponse = await fetch(`${bridge.baseUrl}/healthz`);
+        const unauthorizedResponse = await fetch(`${bridge.baseUrl}/ping`);
         assert.equal(unauthorizedResponse.status, 401);
     } finally {
         await bridge.stop();
@@ -110,13 +110,13 @@ Start the Sepolia bridge, load markets, fetch status, and assert the adapter boo
 */
 runTestnetTest('testnet smoke: compiled JS adapter boots against Arbitrum Sepolia', async () => {
     const authToken = 'testnet-smoke-token';
-    const configText = makeConfigText({
+    const env = makeBridgeEnv({
         rpcUrl: arbitrumSepoliaRpc,
         authToken,
         chainId: 421614,
         preloadMarkets: false,
     });
-    const bridge = await startBridgeServer({ configText, token: authToken });
+    const bridge = await startBridgeServer({ env, token: authToken });
     try {
         const GmxExchange = await importGeneratedExchange();
         const exchange = new GmxExchange({

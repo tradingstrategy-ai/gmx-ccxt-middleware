@@ -1,0 +1,21 @@
+flowchart LR
+    classDef repo fill:#edf6ff,stroke:#24527a,stroke-width:1.5,color:#102a43;
+    classDef external fill:#fff6e5,stroke:#8a5a00,stroke-width:1.5,color:#5d3a00;
+
+    engine["Python GMX engine"]
+    rpc["Arbitrum RPC<br/>configured provider"]
+    subsquid["Subsquid GraphQL<br/>gmx.squids.live"]
+    restv1["GMX REST API v1<br/>gmxinfra domains"]
+    restv2["GMX REST API v2<br/>DigitalOcean host"]
+    registry["Contracts registry<br/>raw.githubusercontent.com"]
+    wallet["Optional signing wallet"]
+
+    engine --> rpc
+    engine --> subsquid
+    engine --> restv1
+    engine --> restv2
+    engine -. "optional refresh" .-> registry
+    engine -. "for signing and submission" .-> wallet
+
+    class engine repo;
+    class rpc,subsquid,restv1,restv2,registry,wallet external;

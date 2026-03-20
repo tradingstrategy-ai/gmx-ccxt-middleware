@@ -1,247 +1,117 @@
-# GMX CCXT Server
+# GMX CCXT Middleware
 
-[![CI](https://github.com/OWNER/gmx-ccxt-server/actions/workflows/integration.yml/badge.svg)](https://github.com/OWNER/gmx-ccxt-server/actions/workflows/integration.yml)
+[![Acceptance smoke](https://github.com/tradingstrategy-ai/gmx-ccxt-middleware/actions/workflows/acceptance-smoke.yml/badge.svg)](https://github.com/tradingstrategy-ai/gmx-ccxt-middleware/actions/workflows/acceptance-smoke.yml)
 
 ## Introduction
 
-`gmx-ccxt-server` provides a REST bridge for GMX, a decentralised perpetual futures exchange that does not ship with a native HTTP API.
+`gmx-ccxt-middleware` provides an HTTP server interface for GMX, a decentralised perpetual futures exchange that does not ship with a native HTTP API.
 
 This repository combines three pieces:
 
 - the existing Python GMX CCXT-compatible implementation from `web3-ethereum-defi`
 - a FastAPI server that exposes that Python exchange over HTTP
-- a new `gmx` exchange in the `ccxt` TypeScript source tree that forwards CCXT calls to the bridge
+- a new `gmx` exchange in the `ccxt` TypeScript source tree that forwards CCXT calls to the GMX CCXT Middleware Server
 
 The result is a server-owned deployment model where RPC settings, wallet address, and private keys stay on the Python side, while the CCXT adapter can be compiled from TypeScript to JavaScript, Python, PHP, and the rest of the CCXT target languages.
 
 If you are familiar with the `gmx-ccxt-freqtrade` tutorial repository, this project sits one layer lower in the stack: instead of wiring GMX directly into a Python trading bot, it turns the existing Python GMX adapter into a reusable HTTP service and a remote CCXT exchange.
 
+The server image is published to GitHub Container Registry:
+
+- `ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:latest`
+- `ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:vN`
+- `ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:main`
+
+For configuration, development, architecture, and tests, see [configuration.md](docs/config.md), [development.md](docs/development.md), [architecture.md](docs/architecture.md), and [tests.md](docs/tests.md).
+
 ## Benefits
 
-- GMX becomes accessible through a normal HTTP service even though the exchange itself is onchain and RPC-driven
+- GMX becomes accessible through a normal HTTP service even though the exchange itself is on-chain and RPC-driven
 - Private keys stay on the server side instead of being distributed to every CCXT client
 - The project reuses the mature Python GMX adapter instead of re-implementing GMX logic in each language
-- The new `ccxt/ts/src/gmx.ts` adapter follows CCXT conventions and can be transpiled through the normal CCXT build flow
-- The bridge is easier to operate in controlled environments, including local forks, bots, and internal services
+- The `ccxt/ts/src/gmx.ts` adapter follows CCXT conventions and can be transpiled through the normal CCXT build flow
+- The GMX CCXT Middleware Server is easier to operate in controlled environments, including local forks, bots, and internal services
 - Testing is cleaner because read-heavy flows can run against Anvil forks, while live smoke checks remain opt-in
 
-## Requirements
+![Main architecture](docs/images/architecture.svg)
 
-To work with this repository you need:
+For the full breakdown, sequence diagrams, and external integration notes, see [architecture.md](docs/architecture.md).
 
-- Python 3.11+
-- Node.js 20+
-- Poetry 2.x
-- `git` with submodule support
-- Anvil for fork-based integration tests
-- An Arbitrum RPC endpoint for fork and live read-only testing
+## Run with Docker
 
-Optional but useful:
-
-- an Arbitrum Sepolia RPC endpoint for live smoke tests
-- a funded wallet and private key if you want to exercise account-specific or write-oriented flows
-
-Important test limitation:
-
-- GMX order execution depends on keeper and oracle mechanics
-- Anvil is useful for read paths and some pending-order coverage, but full GMX trade execution is intentionally not a default automated test requirement in this repo
-
-## Install
-
-### 1. Clone the repository
+Pull the published image from GitHub Container Registry, then run it directly with Docker.
 
 ```bash
-git clone --recurse-submodules <your-repo-url>
-cd gmx-ccxt-server
+docker pull ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:latest
+
+docker run --detach --rm \
+  --name gmx-ccxt-middleware \
+  --publish 127.0.0.1:8000:8000 \
+  --env GMX_PRIVATE_KEY="0xyourmainnetprivatekey" \
+  --env GMX_SERVER_AUTH_TOKEN="change-me" \
+  ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:latest
 ```
 
-If you already cloned without submodules:
+`GMX_RPC_URL` is optional there and defaults to the public Arbitrum RPC. `GMX_EXECUTION_BUFFER` is also optional and defaults to the safe built-in value `2.2`. The published Docker setup binds to `0.0.0.0:8000` inside the container and is published on `127.0.0.1:8000` by default in the example above.
+
+The `latest` tag is updated automatically whenever a new numbered release tag such as `v1`, `v2`, or `v3` is published.
+
+The GMX CCXT Middleware Server exposes:
+
+- `GET /ping` in [ping.py](src/gmx_ccxt_server/routes/ping.py)
+- `GET /describe` in [describe.py](src/gmx_ccxt_server/routes/describe.py)
+- `POST /call` in [call.py](src/gmx_ccxt_server/routes/call.py)
+
+Example health check:
 
 ```bash
-git submodule update --init --recursive
+curl \
+  -H "Authorization: Bearer ${GMX_SERVER_AUTH_TOKEN}" \
+  http://127.0.0.1:8000/ping
 ```
 
-### 2. Install Python and Node dependencies
+## JavaScript Example
+
+Warning: the example below places a real GMX trade with the configured wallet. It first checks that the wallet has enough ETH for gas and enough USDC collateral, then opens and closes a small ETH long so the wallet is returned to flat exposure afterwards.
+
+The full runnable file is [docs/example.js](docs/example.js). Run it with:
 
 ```bash
-make install
+GMX_SERVER_URL="http://127.0.0.1:8000" \
+GMX_SERVER_TOKEN="${GMX_SERVER_AUTH_TOKEN}" \
+node docs/example.js
 ```
 
-This does two things:
+The example uses an `adapterPath` lookup instead of importing `ccxt` from npm. That is intentional: this repository carries a custom generated `gmx` adapter in `ccxt/js/src/gmx.js`, and the example loads that exact local build so it matches the GMX CCXT Middleware Server implementation in this repo. Once the adapter is merged and published through upstream CCXT, this can become a normal package import.
 
-- installs the root Poetry environment, including the local `web3-ethereum-defi` path dependency
-- installs the `ccxt` submodule Node dependencies
+## Ethereum balances to understand
 
-### Optional: enable Mermaid support in Codex
+On Arbitrum and Arbitrum Sepolia, the wallet needs native ETH for gas. This is the chain currency used to pay transaction fees, and it is not an ERC-20 token.
 
-This repository includes a project-scoped Codex MCP configuration in `.codex/config.toml` for Mermaid Chart's hosted MCP server.
+`WETH` is wrapped ETH: an ERC-20 token that is designed to track ETH one-for-one, but it is still a token balance, not gas balance. Holding `WETH` does not by itself let the wallet pay gas fees.
 
-Codex documents project-scoped MCP config via `.codex/config.toml` for trusted projects. Start Codex from this repository to use it:
+You may also see an `ETH` symbol in token lists or exchange balances. In GMX-related token metadata, that can refer to a market or token entry rather than the wallet's native gas balance. For that reason, the GMX CCXT Middleware Server exposes native gas separately in `fetchStatus().info.gasTokenBalance` and `fetchStatus().info.gasTokenBalanceWei`.
 
-```bash
-codex
-```
+## Arbitrum Sepolia testnet
 
-Core Mermaid rendering and validation tools work without authentication.
+Arbitrum Sepolia is Arbirum testnet where you do not need to use real money for testing. Arbitrum Sepolia has GMX testnet deployment.
 
-If you also want Codex to access your Mermaid Chart projects and saved diagrams, export a Mermaid Chart token before launching Codex:
+For local smoke testing on Arbitrum Sepolia you usually need three things:
 
-```bash
-export MERMAID_CHART_TOKEN='<your-mermaid-chart-token>'
-codex
-```
+- Sepolia ETH on Arbitrum for gas
+- GMX test stablecoin collateral
+- optional test WETH if you want to inspect balances or experiment with token-level flows directly
 
-If your Codex install does not yet pick up project-scoped MCP config, copy the same `mcp_servers.mermaid` block into `~/.codex/config.toml`.
+For Sepolia ETH, use the [LearnWeb3 Arbitrum Sepolia faucet](https://learnweb3.io/faucets/arbitrum_sepolia/).
 
-Note: the repo's `.mcp.json` is useful for other MCP-aware tools, but Codex reads `.codex/config.toml` or `~/.codex/config.toml`.
+For GMX test tokens, the Sepolia deployment uses mintable token contracts, so you can mint test balances to your own wallet directly from Arbiscan by calling `mint(account, amount)` on the relevant token contract:
 
-### 3. Create a local bridge config
+- `USDC.SG`: [`0x3253a335E7bFfB4790Aa4C25C4250d206E9b9773`](https://sepolia.arbiscan.io/address/0x3253a335E7bFfB4790Aa4C25C4250d206E9b9773#writeContract)
+- `USDC`: [`0x3321Fd36aEaB0d5CdfD26f4A3A93E2D2aAcCB99f`](https://sepolia.arbiscan.io/address/0x3321Fd36aEaB0d5CdfD26f4A3A93E2D2aAcCB99f#writeContract)
+- `WETH`: [`0x980B62Da83eFf3D4576C647993b0c1D7faf17c73`](https://sepolia.arbiscan.io/address/0x980B62Da83eFf3D4576C647993b0c1D7faf17c73#writeContract)
 
-Start from the example file:
+Example: to mint `999` units of `USDC.SG`, call `mint(your_address, 999000000)`, because the token uses `6` decimals.
 
-```bash
-cp config/gmx-bridge.example.toml config/gmx-bridge.local.toml
-```
+Pay close attention to the collateral symbol used by the market. On Arbitrum Sepolia, GMX commonly uses `USDC.SG` rather than plain `USDC`, so using the wrong stablecoin variant can cause order validation to fail. If a market is quoted like `ETH/USDC.SG:USDC.SG`, fund the wallet with `USDC.SG` and use `USDC.SG` as the collateral symbol in your order parameters.
 
-Fill in the values you need:
-
-- `server.host` and `server.port`
-- `gmx.rpc_url`
-- optional `gmx.private_key`
-- optional `gmx.wallet_address`
-- optional `server.auth_token`
-
-### 4. Build the CCXT adapter outputs
-
-```bash
-make ccxt-build
-```
-
-This runs the relevant CCXT export, implicit API generation, TypeScript build, and REST transpilation steps so the new `gmx` exchange is available in generated outputs such as:
-
-- `ccxt/js/src/gmx.js`
-- `ccxt/python/ccxt/gmx.py`
-- `ccxt/php/gmx.php`
-
-## Use
-
-### Start the bridge server
-
-```bash
-make server CONFIG=config/gmx-bridge.local.toml
-```
-
-The server exposes:
-
-- `GET /healthz`
-- `GET /describe`
-- `POST /call`
-
-### Request format
-
-The bridge uses a single RPC-style endpoint:
-
-```json
-{
-  "id": "optional-request-id",
-  "method": "fetch_ticker",
-  "args": ["ETH/USDC:USDC"],
-  "kwargs": { "params": {} }
-}
-```
-
-### JavaScript usage
-
-After `make ccxt-build`, you can use the generated JavaScript adapter like this:
-
-```js
-import gmx from './ccxt/js/src/gmx.js';
-
-const exchange = new gmx({
-    bridgeUrl: 'http://127.0.0.1:8000',
-    token: 'optional-bearer-token',
-});
-
-const markets = await exchange.loadMarkets();
-const ticker = await exchange.fetchTicker('ETH/USDC:USDC');
-
-console.log(Object.keys(markets).length, ticker.last);
-```
-
-### Operational model
-
-- the Python bridge owns the RPC connection and optional signing key
-- the CCXT adapter only needs `bridgeUrl` and optional `token`
-- account-specific reads such as balances and positions require `wallet_address` or a configured signing wallet on the server side
-
-## How To Run Tests
-
-### Python bridge unit tests
-
-```bash
-poetry run pytest tests/python/test_runtime.py
-```
-
-These validate:
-
-- auth handling
-- whitelisted RPC dispatch
-- JSON-safe result serialization
-
-### JavaScript test suite
-
-```bash
-make test-js
-```
-
-This runs the JavaScript tests against the transpiled adapter. Network-dependent suites skip automatically if the required environment is missing.
-
-### Fork-oriented integration tests
-
-Requirements:
-
-- `anvil` installed
-- `JSON_RPC_ARBITRUM` set
-
-Run:
-
-```bash
-make test-fork
-```
-
-These tests:
-
-- start an Anvil fork
-- pin the fork to block `44000000`, defined in `tests/js/helpers/bridge-test-helpers.mjs`
-- start the FastAPI bridge against that fork
-- import the transpiled JS adapter
-- verify read-heavy GMX flows through the remote CCXT adapter
-
-By design, they do not treat successful GMX trade execution on Anvil as a required pass condition.
-
-### Live smoke tests
-
-Optional environment variables:
-
-- `JSON_RPC_ARBITRUM`
-- `JSON_RPC_ARBITRUM_SEPOLIA`
-
-Run:
-
-```bash
-make test-smoke-live
-```
-
-These are read-only smoke tests for live networks and are safe to keep opt-in.
-
-## GitHub CI
-
-The repository includes a GitHub Actions pipeline in `.github/workflows/integration.yml`.
-
-It is split into:
-
-- a default build-and-test job that installs dependencies, builds the CCXT adapter, runs Python tests, and runs the JS suite
-- an optional fork integration job that runs only when `JSON_RPC_ARBITRUM` is configured as a repository secret
-- an optional live smoke job that runs only when `JSON_RPC_ARBITRUM` and/or `JSON_RPC_ARBITRUM_SEPOLIA` secrets are configured
-
-This keeps the default CI deterministic while still supporting richer GMX integration coverage in environments where RPC secrets are available.
+These Sepolia funding notes are based on the upstream GMX tutorial material in [`README-GMX-Lagoon.md`](web3-ethereum-defi/eth_defi/gmx/README-GMX-Lagoon.md) and [`lagoon-multichain.rst`](web3-ethereum-defi/docs/source/tutorials/lagoon-multichain.rst).

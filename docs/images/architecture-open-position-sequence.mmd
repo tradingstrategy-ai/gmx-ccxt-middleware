@@ -1,0 +1,44 @@
+sequenceDiagram
+    autonumber
+    participant App as JavaScript trading app
+    participant CCXT as CCXT gmx exchange
+    participant Bridge as API bridge
+    participant PyGMX as Python GMX exchange
+    participant Trader as GMXTrading
+    participant Wallet as Signing wallet
+    participant RPC as Arbitrum RPC
+    participant GMX as GMX contracts on Arbitrum
+    participant Indexer as Subsquid / EventEmitter
+
+    App->>CCXT: import ccxt, new ccxt.gmx(...)\ncreateOrder(symbol, "market", "buy", amount, params)
+    CCXT->>Bridge: POST /call\nmethod=create_order
+    Bridge->>PyGMX: BridgeRuntime.call("create_order", ...)
+    PyGMX->>PyGMX: load markets, normalise params,\nensure approvals if needed
+    PyGMX->>Trader: open_position(...)
+    Trader-->>PyGMX: OrderResult with unsigned tx
+    PyGMX->>Wallet: sign_transaction_with_new_nonce(tx)
+    Wallet-->>PyGMX: signed transaction
+    PyGMX->>RPC: eth_sendRawTransaction
+    RPC->>GMX: broadcast createOrder tx
+    GMX-->>RPC: tx hash
+    RPC-->>PyGMX: tx hash
+    PyGMX->>RPC: wait_for_transaction_receipt(tx_hash)
+    RPC-->>PyGMX: transaction receipt
+    PyGMX->>PyGMX: extract_order_key_from_receipt()
+
+    alt Order executed in the same transaction
+        PyGMX->>PyGMX: extract_order_execution_result()\nmark order closed
+    else Keeper executes after creation tx
+        PyGMX->>Indexer: get trade action by order key
+        alt Indexed execution found
+            Indexer-->>PyGMX: OrderExecuted / execution price / size
+        else Fallback to direct log scan
+            PyGMX->>RPC: scan GMX EventEmitter logs
+            RPC-->>PyGMX: execution or cancellation event
+        end
+        PyGMX->>PyGMX: confirm execution or raise keeper error
+    end
+
+    PyGMX-->>Bridge: CCXT order result\nstatus=closed when trade is confirmed
+    Bridge-->>CCXT: JSON response
+    CCXT-->>App: resolved order / trade confirmed

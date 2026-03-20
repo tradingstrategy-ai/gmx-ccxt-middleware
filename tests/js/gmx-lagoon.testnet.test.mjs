@@ -3,14 +3,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-    createTempConfig,
     getFreePort,
     importGeneratedExchange,
-    makeConfigText,
+    makeBridgeEnv,
     pickTestSymbol,
     spawnManaged,
     startBridgeServer,
-    waitForHealth,
+    waitForPing,
 } from './helpers/bridge-test-helpers.mjs';
 
 // Sepolia RPC used for Lagoon testnet coverage.
@@ -77,28 +76,28 @@ function isMatchingLimitOrder(order, { symbol, side, price }) {
 }
 
 async function startSepoliaBridge({ authToken }) {
-    const configText = makeConfigText({
+    const env = makeBridgeEnv({
         rpcUrl: sepoliaRpc,
         authToken,
         chainId: 421614,
         preloadMarkets: false,
     });
-    return await startBridgeServer({ configText, token: authToken });
+    return await startBridgeServer({ env, token: authToken });
 }
 
 async function startLagoonBridge({ authToken }) {
     const port = await getFreePort();
-    const configText = makeConfigText({
+    const env = makeBridgeEnv({
         rpcUrl: sepoliaRpc,
         authToken,
         chainId: 421614,
         preloadMarkets: false,
-    }).replace('__PORT__', String(port));
-    const config = await createTempConfig(configText);
+        port,
+        vaultAddress: lagoonVaultAddress,
+    });
     const script = String.raw`
 import asyncio
 import os
-import sys
 
 import uvicorn
 
@@ -111,8 +110,7 @@ from eth_defi.vault.base import VaultSpec
 from gmx_ccxt_server.app import create_app
 from gmx_ccxt_server.runtime import BridgeRuntime
 
-config_path = sys.argv[1]
-runtime = asyncio.run(BridgeRuntime.from_config_path(config_path))
+runtime = asyncio.run(BridgeRuntime.from_env())
 
 vault = LagoonVault(
     runtime.exchange.web3,
@@ -139,9 +137,9 @@ uvicorn.run(
     log_level=runtime.config.server.log_level,
 )
 `;
-    const childProcess = spawnManaged('poetry', ['run', 'python', '-u', '-c', script, config.path], {
+    const childProcess = spawnManaged('poetry', ['run', 'python', '-u', '-c', script], {
         env: {
-            ...process.env,
+            ...env,
             GMX_LAGOON_TESTNET_VAULT_ADDRESS: lagoonVaultAddress,
             GMX_LAGOON_TESTNET_TRADING_STRATEGY_MODULE_ADDRESS: lagoonTradingStrategyModuleAddress,
             GMX_LAGOON_TESTNET_ASSET_MANAGER_PRIVATE_KEY: lagoonAssetManagerPrivateKey,
@@ -150,18 +148,16 @@ uvicorn.run(
     });
     const baseUrl = `http://127.0.0.1:${port}`;
     try {
-        await waitForHealth(`${baseUrl}/healthz`, authToken);
+        await waitForPing(`${baseUrl}/ping`, authToken);
     } catch (error) {
         const output = childProcess.getOutput();
         await childProcess.stop();
-        await config.cleanup();
         throw new Error(`Lagoon bridge server failed to start\nSTDOUT:\n${output.stdout}\nSTDERR:\n${output.stderr}`);
     }
     return {
         baseUrl,
         async stop() {
             await childProcess.stop();
-            await config.cleanup();
         },
     };
 }

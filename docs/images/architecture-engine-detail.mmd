@@ -1,0 +1,24 @@
+flowchart LR
+    classDef repo fill:#edf6ff,stroke:#24527a,stroke-width:1.5,color:#102a43;
+
+    exchange["GMX exchange"]
+    config["GMXConfig"]
+    trading["GMXTrading"]
+    marketData["GMXMarketData"]
+    api["GMXAPI"]
+    subsquid["GMXSubsquidClient"]
+    client["GMXClient"]
+    wallet["LagoonGMXTradingWallet<br/>optional"]
+
+    exchange --> config
+    exchange --> trading
+    exchange --> marketData
+    exchange --> api
+    exchange --> subsquid
+    client --> config
+    client --> trading
+    client --> marketData
+    client --> api
+    wallet -.-> exchange
+
+    class exchange,config,trading,marketData,api,subsquid,client,wallet repo;

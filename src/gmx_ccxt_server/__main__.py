@@ -1,27 +1,28 @@
 from __future__ import annotations
 
-import argparse
 import asyncio
-import logging
 
 import uvicorn
 
-from .app import create_app
-from .runtime import BridgeRuntime
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the GMX CCXT FastAPI bridge")
-    parser.add_argument("--config", required=True, help="Path to the TOML config file")
-    return parser.parse_args()
+from gmx_ccxt_server.app import create_app
+from gmx_ccxt_server.config import load_config_from_env
+from gmx_ccxt_server.logging_utils import configure_logging
+from gmx_ccxt_server.runtime import BridgeRuntime
 
 
 def main() -> None:
-    args = parse_args()
-    runtime = asyncio.run(BridgeRuntime.from_config_path(args.config))
-    logging.basicConfig(level=getattr(logging, runtime.config.server.log_level.upper(), logging.INFO))
+    config = load_config_from_env()
+    configure_logging(config.server.log_level)
+    runtime = asyncio.run(BridgeRuntime.from_config(config))
     app = create_app(runtime)
-    uvicorn.run(app, host=runtime.config.server.host, port=runtime.config.server.port, log_level=runtime.config.server.log_level)
+    uvicorn.run(
+        app,
+        host=runtime.config.server.host,
+        port=runtime.config.server.port,
+        log_level=runtime.config.server.log_level,
+        log_config=None,
+        access_log=False,
+    )
 
 
 if __name__ == "__main__":
