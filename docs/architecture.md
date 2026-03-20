@@ -11,18 +11,18 @@ Mermaid source: [architecture.mmd](images/architecture.mmd)
 This overview keeps the top-level shape small:
 
 - The left-hand `CCXT` block groups the external CCXT client and the repo's `gmx` CCXT exchange class in [gmx.ts](../ccxt/ts/src/gmx.ts).
-- The middle `API bridge` block is our system, implemented in [__main__.py](../src/gmx_ccxt_server/__main__.py), [app.py](../src/gmx_ccxt_server/app.py), [runtime.py](../src/gmx_ccxt_server/runtime.py), and [config.py](../src/gmx_ccxt_server/config.py).
+- The middle `API bridge` block is the `GMX CCXT Middleware Server`, implemented in [__main__.py](../src/gmx_ccxt_server/__main__.py), [app.py](../src/gmx_ccxt_server/app.py), [runtime.py](../src/gmx_ccxt_server/runtime.py), and [config.py](../src/gmx_ccxt_server/config.py).
 - The right-hand `Arbitrum and GMX` block groups the external RPC connection and the other GMX API services used by the Python GMX engine in [exchange.py](../web3-ethereum-defi/eth_defi/gmx/ccxt/exchange.py).
 
-## Bridge Detail
+## Middleware Server Detail
 
 ![Bridge detail chart](images/architecture-bridge-detail.svg)
 
 Mermaid source: [architecture-bridge-detail.mmd](images/architecture-bridge-detail.mmd)
 
-This chart focuses on the bridge internals:
+This chart focuses on the `GMX CCXT Middleware Server` internals:
 
-- The bridge entrypoint is [__main__.py](../src/gmx_ccxt_server/__main__.py), which starts Uvicorn and builds the app.
+- The server entrypoint is [__main__.py](../src/gmx_ccxt_server/__main__.py), which starts Uvicorn and builds the app.
 - The FastAPI app wiring is in [app.py](../src/gmx_ccxt_server/app.py), while the public endpoints live in [ping.py](../src/gmx_ccxt_server/routes/ping.py), [describe.py](../src/gmx_ccxt_server/routes/describe.py), and [call.py](../src/gmx_ccxt_server/routes/call.py).
 - Runtime orchestration is in [runtime.py](../src/gmx_ccxt_server/runtime.py), where `BridgeRuntime` enforces the method allow-list and serialises exchange calls.
 - Config loading is in [config.py](../src/gmx_ccxt_server/config.py), which maps `GMX_*` environment variables into the Python GMX exchange parameters.
@@ -51,7 +51,7 @@ Mermaid source: [architecture-external-integrations.mmd](images/architecture-ext
 
 This chart focuses on out-of-repo dependencies:
 
-- Arbitrum RPC is configured through `GMX_RPC_URL`. In GMX terms this is how the bridge reaches the on-chain protocol contracts documented in the official [GMX Contracts docs](https://docs.gmx.io/docs/api/contracts/).
+- Arbitrum RPC is configured through `GMX_RPC_URL`. In GMX terms this is how the `GMX CCXT Middleware Server` reaches the on-chain protocol contracts documented in the official [GMX Contracts docs](https://docs.gmx.io/docs/api/contracts/).
 - Optional signing state comes from `GMX_PRIVATE_KEY`, `GMX_WALLET_ADDRESS` in read-only mode, or an injected wallet object. Signed transactions are submitted against the GMX contract surface described in the official [GMX Contracts docs](https://docs.gmx.io/docs/api/contracts/).
 - The GMX Subsquid indexer domain is `gmx.squids.live`. The official endpoint list and network mapping are in the [GMX Subsquid docs](https://docs.gmx.io/docs/api/subsquid/).
 - The GMX REST API v1 domains in the codebase are `arbitrum-api.gmxinfra.io`, `arbitrum-api.gmxinfra2.io`, `arbitrum-api-fallback.gmxinfra.io`, and `arbitrum-api-fallback.gmxinfra2.io`. These correspond to the official [GMX REST API docs](https://docs.gmx.io/docs/api/rest/).
@@ -66,8 +66,8 @@ Mermaid source: [architecture-open-position-sequence.mmd](images/architecture-op
 
 This sequence starts from a JavaScript trading app that imports CCXT and configures `ccxt.gmx`, then follows an open-position call all the way through broadcast and confirmation:
 
-- The JavaScript side uses the repo's `gmx` CCXT exchange class in [gmx.ts](../ccxt/ts/src/gmx.ts), which sends `create_order` over the bridge HTTP contract.
-- The bridge dispatches to `BridgeRuntime` in [runtime.py](../src/gmx_ccxt_server/runtime.py), which calls the Python `GMX` exchange in [exchange.py](../web3-ethereum-defi/eth_defi/gmx/ccxt/exchange.py).
+- The JavaScript side uses the repo's `gmx` CCXT exchange class in [gmx.ts](../ccxt/ts/src/gmx.ts), which sends `create_order` to the `GMX CCXT Middleware Server` HTTP contract.
+- The `GMX CCXT Middleware Server` dispatches to `BridgeRuntime` in [runtime.py](../src/gmx_ccxt_server/runtime.py), which calls the Python `GMX` exchange in [exchange.py](../web3-ethereum-defi/eth_defi/gmx/ccxt/exchange.py).
 - The Python GMX code builds an unsigned order transaction through `GMXTrading` in [trading.py](../web3-ethereum-defi/eth_defi/gmx/trading.py) and the order classes in [base_order.py](../web3-ethereum-defi/eth_defi/gmx/order/base_order.py).
 - The transaction is signed, broadcast to Arbitrum through RPC, and the Python CCXT code waits for the transaction receipt.
 - After receipt retrieval, the Python CCXT code extracts the GMX `order_key` and confirms the trade either from the same receipt or by waiting for keeper execution through Subsquid or direct EventEmitter log scanning before returning a closed order to the JavaScript caller.
@@ -79,10 +79,10 @@ Some orders are fully resolved by the time the initial transaction receipt comes
 In this path:
 
 - the JavaScript app submits one CCXT `createOrder(...)` call
-- the bridge forwards it to the Python GMX exchange
+- the `GMX CCXT Middleware Server` forwards it to the Python GMX exchange
 - the signed transaction is broadcast through Arbitrum RPC
 - the receipt already contains enough GMX execution data for Python to confirm the trade
-- the bridge returns a confirmed result without needing to poll the indexer
+- the `GMX CCXT Middleware Server` returns a confirmed result without needing to poll the indexer
 
 This is the simpler flow because the write and the confirmation happen off the same transaction receipt.
 
@@ -108,7 +108,7 @@ The important difference is timing:
 
 ### Execution buffer
 
-`execution_buffer` is the fee safety multiplier that this bridge passes into the Python GMX order-building code. In this repo it defaults to `2.2` through the environment-backed bridge config in [config.py](../src/gmx_ccxt_server/config.py), and is then used by the `eth_defi` GMX code when calculating the execution fee for an order.
+`execution_buffer` is the fee safety multiplier that the `GMX CCXT Middleware Server` passes into the Python GMX order-building code. In this repo it defaults to `2.2` through the environment-backed server config in [config.py](../src/gmx_ccxt_server/config.py), and is then used by the `eth_defi` GMX code when calculating the execution fee for an order.
 
 The relevant behaviour is implemented in [gas_utils.py](../web3-ethereum-defi/eth_defi/gmx/gas_utils.py): the base execution fee is multiplied by `execution_buffer` so the order includes enough execution fee for GMX keepers to execute it profitably even if gas conditions worsen. The same module warns that low values make keeper rejection more likely, and notes that any excess execution fee is refunded by GMX.
 

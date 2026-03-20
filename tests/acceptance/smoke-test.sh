@@ -10,9 +10,8 @@ set -euo pipefail
 # 3. Rebuilds the local generated CCXT adapter used by docs/example.js.
 # 4. Starts docker-compose.yaml against Arbitrum Sepolia with a signing wallet.
 # 5. Waits for the bridge health endpoint to become ready.
-# 6. Reads /balance to confirm the endpoint works and prints the wallet state.
-# 7. Runs docs/example.js against that live bridge instance.
-# 8. Always tears the Compose stack down, even if the example fails.
+# 6. Runs docs/example.js against that live bridge instance.
+# 7. Always tears the Compose stack down, even if the example fails.
 #
 # Why Sepolia:
 # The example opens and then closes a live GMX position. Running this flow on
@@ -60,12 +59,6 @@ require_env() {
         echo "Required environment variable is not set: ${variable_name}" >&2
         exit 1
     fi
-}
-
-read_json_field() {
-    local json_payload="$1"
-    local js_expression="$2"
-    JSON_PAYLOAD="${json_payload}" node -e "const payload = JSON.parse(process.env.JSON_PAYLOAD); const value = ${js_expression}; if (value === undefined || value === null) { process.exit(1); } process.stdout.write(String(value));"
 }
 
 cleanup() {
@@ -133,20 +126,10 @@ done
 
 curl --silent --show-error --fail "${BRIDGE_URL}/ping" >/dev/null
 
-echo "==> Checking wallet funding via /balance"
-
-balance_payload="$(curl --silent --show-error --fail "${BRIDGE_URL}/balance")"
-
-echo "Bridge /balance response: ${balance_payload}"
-
-# Make sure the expected balance fields are present. The actual minimum-balance
-# checks live in docs/example.js so we do not duplicate the thresholds here.
-read_json_field "${balance_payload}" "payload.hotWalletBalance && payload.hotWalletBalance.total" >/dev/null
-read_json_field "${balance_payload}" "payload.usdcBalance && payload.usdcBalance.total" >/dev/null
-
 # Reuse the public example exactly as a user would, only pointing it at the
 # Sepolia-backed bridge that this script just started. The example performs the
-# ETH and USDC minimum-balance checks before attempting any trade.
+# ETH and USDC minimum-balance checks via exchange.fetchBalance() before
+# attempting any trade.
 echo "==> Running docs/example.js against the Dockerised bridge"
 node docs/example.js
 

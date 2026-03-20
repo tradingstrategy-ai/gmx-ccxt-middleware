@@ -2,7 +2,19 @@
 
 [![Acceptance smoke](https://github.com/tradingstrategy-ai/gmx-ccxt-middleware/actions/workflows/acceptance-smoke.yml/badge.svg)](https://github.com/tradingstrategy-ai/gmx-ccxt-middleware/actions/workflows/acceptance-smoke.yml)
 
-GMX CCXT Middleware runs the Python GMX CCXT implementation behind a FastAPI bridge so CCXT clients in other languages can trade on GMX through a simple HTTP endpoint.
+## Introduction
+
+`gmx-ccxt-middleware` provides a REST bridge for GMX, a decentralised perpetual futures exchange that does not ship with a native HTTP API.
+
+This repository combines three pieces:
+
+- the existing Python GMX CCXT-compatible implementation from `web3-ethereum-defi`
+- a FastAPI server that exposes that Python exchange over HTTP
+- a new `gmx` exchange in the `ccxt` TypeScript source tree that forwards CCXT calls to the bridge
+
+The result is a server-owned deployment model where RPC settings, wallet address, and private keys stay on the Python side, while the CCXT adapter can be compiled from TypeScript to JavaScript, Python, PHP, and the rest of the CCXT target languages.
+
+If you are familiar with the `gmx-ccxt-freqtrade` tutorial repository, this project sits one layer lower in the stack: instead of wiring GMX directly into a Python trading bot, it turns the existing Python GMX adapter into a reusable HTTP service and a remote CCXT exchange.
 
 The server image is published to GitHub Container Registry:
 
@@ -11,6 +23,19 @@ The server image is published to GitHub Container Registry:
 - `ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:main`
 
 For configuration, development, architecture, and tests, see [configuration.md](docs/config.md), [development.md](docs/development.md), [architecture.md](docs/architecture.md), and [tests.md](docs/tests.md).
+
+## Benefits
+
+- GMX becomes accessible through a normal HTTP service even though the exchange itself is on-chain and RPC-driven
+- Private keys stay on the server side instead of being distributed to every CCXT client
+- The project reuses the mature Python GMX adapter instead of re-implementing GMX logic in each language
+- The `ccxt/ts/src/gmx.ts` adapter follows CCXT conventions and can be transpiled through the normal CCXT build flow
+- The bridge is easier to operate in controlled environments, including local forks, bots, and internal services
+- Testing is cleaner because read-heavy flows can run against Anvil forks, while live smoke checks remain opt-in
+
+![Main architecture](docs/images/architecture.svg)
+
+For the full breakdown, sequence diagrams, and external integration notes, see [architecture.md](docs/architecture.md).
 
 ## Run with Docker
 
@@ -31,7 +56,6 @@ The bundled [docker-compose.yaml](docker-compose.yaml) already lists every suppo
 The bridge exposes:
 
 - `GET /ping` in [ping.py](src/gmx_ccxt_server/routes/ping.py)
-- `GET /balance` in [balance.py](src/gmx_ccxt_server/routes/balance.py)
 - `GET /describe` in [describe.py](src/gmx_ccxt_server/routes/describe.py)
 - `POST /call` in [call.py](src/gmx_ccxt_server/routes/call.py)
 
@@ -60,22 +84,27 @@ The example uses an `adapterPath` lookup instead of importing `ccxt` from npm. T
 Example code:
 
 ```js
-const path = require('node:path');
-const { pathToFileURL } = require('node:url');
+const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
-const BRIDGE_URL = process.env.BRIDGE_URL || 'http://127.0.0.1:8000';
-const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN || '';
-const SYMBOL = 'ETH/USDC:USDC';
+const BRIDGE_URL = process.env.BRIDGE_URL || "http://127.0.0.1:8000";
+const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN || "";
+const SYMBOL = "ETH/USDC:USDC";
 const POSITION_SIZE_USD = 5.0;
 const POSITION_LEVERAGE = 2.0;
-const MIN_ETH_GAS_BALANCE = Number(process.env.MIN_ETH_GAS_BALANCE || '0.002');
-const MIN_USDC_BALANCE = Number(process.env.MIN_USDC_BALANCE || String((POSITION_SIZE_USD / POSITION_LEVERAGE) + 1.0));
+const MIN_ETH_GAS_BALANCE = Number(process.env.MIN_ETH_GAS_BALANCE || "0.002");
+const MIN_USDC_BALANCE = Number(
+  process.env.MIN_USDC_BALANCE ||
+    String(POSITION_SIZE_USD / POSITION_LEVERAGE + 1.0),
+);
 
 function getCurrencyBalance(balance, currency) {
   const account = balance?.[currency] ?? {};
   const free = Number(balance?.free?.[currency] ?? account.free ?? 0);
   const used = Number(balance?.used?.[currency] ?? account.used ?? 0);
-  const total = Number(balance?.total?.[currency] ?? account.total ?? free + used);
+  const total = Number(
+    balance?.total?.[currency] ?? account.total ?? free + used,
+  );
 
   return {
     currency,
@@ -86,17 +115,22 @@ function getCurrencyBalance(balance, currency) {
 }
 
 function assertMinimumBalance(currencyBalance, minimumRequired, purpose) {
-  if (!Number.isFinite(currencyBalance.total) || currencyBalance.total < minimumRequired) {
+  if (
+    !Number.isFinite(currencyBalance.total) ||
+    currencyBalance.total < minimumRequired
+  ) {
     throw new Error(
       `Insufficient ${currencyBalance.currency} for ${purpose}. ` +
-      `Need at least ${minimumRequired}, wallet has ${currencyBalance.total}.`,
+        `Need at least ${minimumRequired}, wallet has ${currencyBalance.total}.`,
     );
   }
 }
 
 async function main() {
-  const adapterPath = path.resolve(__dirname, '../ccxt/js/src/gmx.js');
-  const { default: GmxExchange } = await import(pathToFileURL(adapterPath).href);
+  const adapterPath = path.resolve(__dirname, "../ccxt/js/src/gmx.js");
+  const { default: GmxExchange } = await import(
+    pathToFileURL(adapterPath).href
+  );
 
   const exchange = new GmxExchange({
     bridgeUrl: BRIDGE_URL,
@@ -105,20 +139,22 @@ async function main() {
   });
 
   const balance = await exchange.fetchBalance();
-  const ethBalance = getCurrencyBalance(balance, 'ETH');
-  const usdcBalance = getCurrencyBalance(balance, 'USDC');
-  console.log('Wallet balances:', {
+  const ethBalance = getCurrencyBalance(balance, "ETH");
+  const usdcBalance = getCurrencyBalance(balance, "USDC");
+  console.log("Wallet balances:", {
     gas: ethBalance,
     collateral: usdcBalance,
   });
 
-  assertMinimumBalance(ethBalance, MIN_ETH_GAS_BALANCE, 'Arbitrum gas');
-  assertMinimumBalance(usdcBalance, MIN_USDC_BALANCE, 'USDC collateral');
+  assertMinimumBalance(ethBalance, MIN_ETH_GAS_BALANCE, "Arbitrum gas");
+  assertMinimumBalance(usdcBalance, MIN_USDC_BALANCE, "USDC collateral");
 
   const positionsBeforeOpen = await exchange.fetchPositions([SYMBOL]);
-  console.log('Currently opened positions:', positionsBeforeOpen);
+  console.log("Currently opened positions:", positionsBeforeOpen);
   if (positionsBeforeOpen.some((position) => position.symbol === SYMBOL)) {
-    throw new Error(`Refusing to run while ${SYMBOL} already has an open position for this wallet.`);
+    throw new Error(
+      `Refusing to run while ${SYMBOL} already has an open position for this wallet.`,
+    );
   }
 
   const markets = await exchange.loadMarkets();
@@ -128,37 +164,46 @@ async function main() {
   const topMarkets = Object.keys(markets)
     .map((symbol) => ({
       symbol,
-      openInterestValue: Number(openInterests?.[symbol]?.openInterestValue ?? 0),
+      openInterestValue: Number(
+        openInterests?.[symbol]?.openInterestValue ?? 0,
+      ),
     }))
     .sort((left, right) => right.openInterestValue - left.openInterestValue)
     .slice(0, 5);
-  console.log('Top 5 markets by open interest (USD):', topMarkets);
+  console.log("Top 5 markets by open interest (USD):", topMarkets);
 
   const openOrder = await exchange.createMarketBuyOrder(SYMBOL, 0, {
     size_usd: POSITION_SIZE_USD,
     leverage: POSITION_LEVERAGE,
-    collateral_symbol: 'USDC',
+    collateral_symbol: "USDC",
     wait_for_execution: true,
     slippage_percent: 0.005,
   });
 
-  console.log('Opened long:', openOrder);
+  console.log("Opened long:", openOrder);
 
   const positionsAfterOpen = await exchange.fetchPositions([SYMBOL]);
-  console.log('Positions after open:', positionsAfterOpen);
+  console.log("Positions after open:", positionsAfterOpen);
 
-  const closeOrder = await exchange.createOrder(SYMBOL, 'market', 'sell', 0, undefined, {
-    size_usd: POSITION_SIZE_USD,
-    collateral_symbol: 'USDC',
-    reduceOnly: true,
-    wait_for_execution: true,
-    slippage_percent: 0.005,
-  });
+  const closeOrder = await exchange.createOrder(
+    SYMBOL,
+    "market",
+    "sell",
+    0,
+    undefined,
+    {
+      size_usd: POSITION_SIZE_USD,
+      collateral_symbol: "USDC",
+      reduceOnly: true,
+      wait_for_execution: true,
+      slippage_percent: 0.005,
+    },
+  );
 
-  console.log('Closed long:', closeOrder);
+  console.log("Closed long:", closeOrder);
 
   const positionsAfterClose = await exchange.fetchPositions([SYMBOL]);
-  console.log('Positions after close:', positionsAfterClose);
+  console.log("Positions after close:", positionsAfterClose);
 }
 
 main().catch((error) => {
@@ -167,7 +212,9 @@ main().catch((error) => {
 });
 ```
 
-## Arbitrum Sepolia Funding
+## Arbitrum Sepolia testnet
+
+Arbitrum Sepolia is Arbirum testnet where you do not need to use real money for testing. Arbitrum Sepolia has GMX testnet deployment.
 
 For local smoke testing on Arbitrum Sepolia you usually need three things:
 
