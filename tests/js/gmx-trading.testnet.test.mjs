@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
     importGeneratedExchange,
-    makeConfigText,
+    makeBridgeEnv,
     pickTestSymbol,
     startBridgeServer,
 } from './helpers/bridge-test-helpers.mjs';
@@ -28,7 +28,7 @@ function bearerHeaders(token) {
 }
 
 async function startSepoliaBridge({ authToken, includeSigning = false }) {
-    const configText = makeConfigText({
+    const env = makeBridgeEnv({
         rpcUrl: sepoliaRpc,
         authToken,
         chainId: 421614,
@@ -36,7 +36,7 @@ async function startSepoliaBridge({ authToken, includeSigning = false }) {
         walletAddress: includeSigning ? walletAddress : '',
         preloadMarkets: false,
     });
-    return await startBridgeServer({ configText, token: authToken });
+    return await startBridgeServer({ env, token: authToken });
 }
 
 function extractOrderId(order) {

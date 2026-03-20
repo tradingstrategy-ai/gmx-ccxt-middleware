@@ -7,7 +7,7 @@ This repository exposes the Python GMX CCXT-compatible exchange from the `web3-e
 The main moving parts are:
 
 - `src/gmx_ccxt_server/`: FastAPI bridge, config loading, runtime, serialisation
-- `config/`: example bridge configuration
+- `docker-compose.yaml`: default runtime entrypoint for the published GHCR image
 - `tests/python/`: Python unit tests for the bridge runtime and HTTP contract
 - `tests/js/`: JavaScript integration and smoke tests against the transpiled CCXT adapter
 - `ccxt/`: upstream CCXT checkout and generated outputs
@@ -49,22 +49,24 @@ make ccxt-build
 
 ## Running the bridge
 
-Create a local bridge config first:
+Export bridge environment variables first:
 
 ```shell
-cp config/gmx-bridge.example.toml config/gmx-bridge.local.toml
+export GMX_PRIVATE_KEY="0xyourprivatekey"
+export GMX_AUTH_TOKEN="change-me"
+export GMX_SERVER_ADDRESS="127.0.0.1:8000"
 ```
 
 Start the server:
 
 ```shell
-make server CONFIG=config/gmx-bridge.local.toml
+make server
 ```
 
 You can also run it directly:
 
 ```shell
-poetry run python -m gmx_ccxt_server --config config/gmx-bridge.local.toml
+poetry run python -m gmx_ccxt_server
 ```
 
 ## Test setup
@@ -81,6 +83,9 @@ Useful environment variables for this project:
 - `JSON_RPC_ARBITRUM_SEPOLIA`
 - `GMX_PRIVATE_KEY`
 - `GMX_WALLET_ADDRESS`
+- `GMX_RPC_URL`
+- `GMX_SERVER_ADDRESS`
+- `GMX_AUTH_TOKEN`
 
 Not every workflow needs every variable. Read-only smoke tests can run without private key material.
 

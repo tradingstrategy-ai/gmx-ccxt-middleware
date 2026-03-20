@@ -1,0 +1,39 @@
+services:
+  gmx-ccxt-server:
+    image: ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:main
+    ports:
+      # Publish the bridge on localhost:8000 by default for the host machine.
+      - "127.0.0.1:8000:8000"
+    environment:
+      # Full bind address used by the FastAPI bridge inside the container.
+      GMX_SERVER_ADDRESS: ${GMX_SERVER_ADDRESS:-0.0.0.0:8000}
+      # Optional bearer token required by /ping, /describe, and /call.
+      GMX_AUTH_TOKEN: ${GMX_AUTH_TOKEN:-}
+      # Python logging level for bridge startup and request logs.
+      GMX_LOG_LEVEL: ${GMX_LOG_LEVEL:-info}
+      # Optional GMX JSON-RPC override; defaults to the public Arbitrum RPC when omitted.
+      GMX_RPC_URL: ${GMX_RPC_URL:-https://arb1.arbitrum.io/rpc}
+      # Optional EOA private key used for signing GMX transactions.
+      GMX_PRIVATE_KEY: ${GMX_PRIVATE_KEY:-}
+      # Optional read-only wallet address used when no private key is configured.
+      GMX_WALLET_ADDRESS: ${GMX_WALLET_ADDRESS:-}
+      # Optional explicit chain id override for the GMX exchange config.
+      GMX_CHAIN_ID: ${GMX_CHAIN_ID:-42161}
+      # Optional custom Subsquid endpoint for GMX event/indexer lookups.
+      GMX_SUBSQUID_ENDPOINT: ${GMX_SUBSQUID_ENDPOINT:-}
+      # Optional execution buffer for GMX orders; defaults to the safe built-in value 2.2.
+      GMX_EXECUTION_BUFFER: ${GMX_EXECUTION_BUFFER:-2.2}
+      # Default slippage percentage passed to the GMX order builder.
+      GMX_DEFAULT_SLIPPAGE: ${GMX_DEFAULT_SLIPPAGE:-0.003}
+      # Verbose toggle for lower-level GMX Python logging.
+      GMX_VERBOSE: ${GMX_VERBOSE:-false}
+      # Whether to call load_markets() during bridge startup.
+      GMX_PRELOAD_MARKETS: ${GMX_PRELOAD_MARKETS:-false}
+      # Toggle for the GMX REST API assisted market-data path.
+      GMX_REST_API_MODE: ${GMX_REST_API_MODE:-true}
+      # Toggle for GraphQL-only market-data mode in the Python GMX client.
+      GMX_GRAPHQL_ONLY: ${GMX_GRAPHQL_ONLY:-false}
+      # Toggle for disabling the GMX Python market cache.
+      GMX_DISABLE_MARKET_CACHE: ${GMX_DISABLE_MARKET_CACHE:-false}
+      # Optional Lagoon vault address forwarded to the Python GMX options.
+      GMX_VAULT_ADDRESS: ${GMX_VAULT_ADDRESS:-}

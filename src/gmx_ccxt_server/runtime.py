@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi.concurrency import run_in_threadpool
 
-from .config import AppConfig, load_config
+from .config import AppConfig, load_config_from_env
 from .serialization import serialize_for_json
 
 ALLOWED_METHODS: frozenset[str] = frozenset(
@@ -63,8 +63,8 @@ class BridgeRuntime:
         self._lock = asyncio.Lock()
 
     @classmethod
-    async def from_config_path(cls, path: str) -> "BridgeRuntime":
-        config = load_config(path)
+    async def from_env(cls) -> "BridgeRuntime":
+        config = load_config_from_env()
         exchange = await run_in_threadpool(cls._create_exchange, config)
         runtime = cls(config, exchange)
         if config.gmx.preload_markets:
@@ -76,7 +76,7 @@ class BridgeRuntime:
         from eth_defi.gmx.ccxt.exchange import GMX
 
         exchange = GMX(config.gmx.to_exchange_parameters())
-        if config.gmx.wallet_address:
+        if config.gmx.wallet_address and not config.gmx.private_key:
             exchange.wallet_address = config.gmx.wallet_address
             if getattr(exchange, "config", None) is not None and hasattr(exchange.config, "_user_wallet_address"):
                 exchange.config._user_wallet_address = config.gmx.wallet_address

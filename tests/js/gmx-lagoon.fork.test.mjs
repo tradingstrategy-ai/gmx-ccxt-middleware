@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import {
     importGeneratedExchange,
-    makeConfigText,
+    makeBridgeEnv,
     startAnvilFork,
     startBridgeServer,
 } from './helpers/bridge-test-helpers.mjs';
@@ -34,13 +34,14 @@ async function startLagoonBridge() {
     const authToken = 'lagoon-fork-token';
     const anvil = await startAnvilFork(forkRpc);
     const bridge = await startBridgeServer({
-        configText: makeConfigText({
+        env: makeBridgeEnv({
             rpcUrl: anvil.rpcUrl,
             authToken,
             privateKey: lagoonAssetManagerPrivateKey,
             walletAddress: lagoonSafeAddress,
             chainId: 42161,
             preloadMarkets: false,
+            vaultAddress: lagoonSafeAddress,
         }),
         token: authToken,
     });
@@ -62,7 +63,7 @@ Start the Lagoon-configured fork bridge, check health and describe, then assert 
 runLagoonForkTest('lagoon fork: bridge bootstrap exposes the Lagoon wallet-address read path', async () => {
     const { anvil, bridge, exchange } = await startLagoonBridge();
     try {
-        const healthResponse = await fetch(`${bridge.baseUrl}/healthz`, {
+        const healthResponse = await fetch(`${bridge.baseUrl}/ping`, {
             headers: { Authorization: 'Bearer lagoon-fork-token' },
         });
         assert.equal(healthResponse.status, 200);

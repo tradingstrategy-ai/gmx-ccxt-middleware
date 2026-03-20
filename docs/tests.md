@@ -39,6 +39,8 @@ The plan is based on the existing GMX test inventory in `web3-ethereum-defi/test
 
 The JavaScript test suite is environment-gated. Some variables are required for the whole suite, while others only enable extra coverage.
 
+The bridge itself is now environment-only as well. Test helpers start it by exporting `GMX_*` variables instead of writing temporary config files.
+
 ### Core RPC variables
 
 These are the primary variables needed to run the non-Lagoon test suite:
@@ -222,11 +224,23 @@ The following Python test groups are the main input for this plan:
   - `web3-ethereum-defi/tests/gmx/lagoon/test_gmx_lagoon_integration.py`
   - `web3-ethereum-defi/tests/gmx/lagoon/test_gmx_lagoon_wallet.py`
 
+## GitHub CI
+
+The repository includes a GitHub Actions pipeline in `.github/workflows/integration.yml`.
+
+It is split into:
+
+- a default build-and-test job that installs dependencies, builds the CCXT adapter, runs Python tests, and runs the JS suite
+- an optional fork integration job that runs only when `JSON_RPC_ARBITRUM` is configured as a repository secret
+- an optional live smoke job that runs only when `JSON_RPC_ARBITRUM` and/or `JSON_RPC_ARBITRUM_SEPOLIA` secrets are configured
+
+This keeps the default CI deterministic while still supporting richer GMX integration coverage in environments where RPC secrets are available.
+
 ## Test matrix
 
 | Functionality category | Test type | Test module | Test case name | Description of functionality tested |
 | --- | --- | --- | --- | --- |
-| Bridge contract | fork | `tests/js/bridge-contract.test.mjs` | `test_bridge_healthz_returns_runtime_metadata` | Verify `GET /healthz` returns liveness and non-secret config summary. |
+| Bridge contract | fork | `tests/js/bridge-contract.test.mjs` | `test_bridge_ping_returns_runtime_metadata` | Verify `GET /ping` returns liveness and non-secret config summary. |
 | Bridge contract | fork | `tests/js/bridge-contract.test.mjs` | `test_bridge_describe_returns_exchange_metadata` | Verify `GET /describe` returns bridge metadata plus GMX `describe()` payload. |
 | Bridge contract | fork | `tests/js/bridge-contract.test.mjs` | `test_bridge_call_serialises_args_and_result` | Verify the JS adapter sends a valid `/call` payload and receives JSON-safe values back. |
 | Bridge contract | fork | `tests/js/bridge-contract.test.mjs` | `test_bridge_rejects_missing_or_invalid_bearer_token` | Verify bridge auth works and maps to CCXT `AuthenticationError`. |

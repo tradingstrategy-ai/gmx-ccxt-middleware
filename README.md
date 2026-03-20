@@ -1,247 +1,115 @@
-# GMX CCXT Server
+# GMX CCXT Middleware
 
-[![CI](https://github.com/OWNER/gmx-ccxt-server/actions/workflows/integration.yml/badge.svg)](https://github.com/OWNER/gmx-ccxt-server/actions/workflows/integration.yml)
+GMX CCXT Middleware runs the Python GMX CCXT implementation behind a FastAPI bridge so CCXT clients in other languages can trade on GMX through a simple HTTP endpoint.
 
-## Introduction
+The server image is published to GitHub Container Registry:
 
-`gmx-ccxt-server` provides a REST bridge for GMX, a decentralised perpetual futures exchange that does not ship with a native HTTP API.
+- `ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:main`
 
-This repository combines three pieces:
+For architecture, testing, and contributor workflows, see [docs/architecture.md](docs/architecture.md), [docs/tests.md](docs/tests.md), and [docs/development.md](docs/development.md).
 
-- the existing Python GMX CCXT-compatible implementation from `web3-ethereum-defi`
-- a FastAPI server that exposes that Python exchange over HTTP
-- a new `gmx` exchange in the `ccxt` TypeScript source tree that forwards CCXT calls to the bridge
+## Run with Docker
 
-The result is a server-owned deployment model where RPC settings, wallet address, and private keys stay on the Python side, while the CCXT adapter can be compiled from TypeScript to JavaScript, Python, PHP, and the rest of the CCXT target languages.
-
-If you are familiar with the `gmx-ccxt-freqtrade` tutorial repository, this project sits one layer lower in the stack: instead of wiring GMX directly into a Python trading bot, it turns the existing Python GMX adapter into a reusable HTTP service and a remote CCXT exchange.
-
-## Benefits
-
-- GMX becomes accessible through a normal HTTP service even though the exchange itself is onchain and RPC-driven
-- Private keys stay on the server side instead of being distributed to every CCXT client
-- The project reuses the mature Python GMX adapter instead of re-implementing GMX logic in each language
-- The new `ccxt/ts/src/gmx.ts` adapter follows CCXT conventions and can be transpiled through the normal CCXT build flow
-- The bridge is easier to operate in controlled environments, including local forks, bots, and internal services
-- Testing is cleaner because read-heavy flows can run against Anvil forks, while live smoke checks remain opt-in
-
-## Requirements
-
-To work with this repository you need:
-
-- Python 3.11+
-- Node.js 20+
-- Poetry 2.x
-- `git` with submodule support
-- Anvil for fork-based integration tests
-- An Arbitrum RPC endpoint for fork and live read-only testing
-
-Optional but useful:
-
-- an Arbitrum Sepolia RPC endpoint for live smoke tests
-- a funded wallet and private key if you want to exercise account-specific or write-oriented flows
-
-Important test limitation:
-
-- GMX order execution depends on keeper and oracle mechanics
-- Anvil is useful for read paths and some pending-order coverage, but full GMX trade execution is intentionally not a default automated test requirement in this repo
-
-## Install
-
-### 1. Clone the repository
+Set the environment variables you need, then start the published container with Docker Compose.
 
 ```bash
-git clone --recurse-submodules <your-repo-url>
-cd gmx-ccxt-server
+export GMX_PRIVATE_KEY="0xyourmainnetprivatekey"
+export GMX_AUTH_TOKEN="change-me"
+
+docker compose pull
+docker compose up -d
 ```
 
-If you already cloned without submodules:
+The bundled [docker-compose.yaml](docker-compose.yaml) already lists every supported runtime environment variable with a short comment explaining what it does. `GMX_RPC_URL` is optional there and defaults to the public Arbitrum RPC. `GMX_EXECUTION_BUFFER` is also optional and defaults to the safe built-in value `2.2`. The published Docker setup listens on `127.0.0.1:8000` by default.
+
+The bridge exposes:
+
+- `GET /ping` in [ping.py](src/gmx_ccxt_server/routes/ping.py)
+- `GET /describe` in [describe.py](src/gmx_ccxt_server/routes/describe.py)
+- `POST /call` in [call.py](src/gmx_ccxt_server/routes/call.py)
+
+Example health check:
 
 ```bash
-git submodule update --init --recursive
+curl \
+  -H "Authorization: Bearer ${GMX_AUTH_TOKEN}" \
+  http://127.0.0.1:8000/ping
 ```
 
-### 2. Install Python and Node dependencies
+## JavaScript Example
+
+Warning: the example below places real Arbitrum mainnet trades. It opens and closes a live ETH long using USDC collateral with a hardcoded 5 USD-sized position.
+
+The full runnable file is [docs/example.js](docs/example.js). Run it with:
 
 ```bash
-make install
+BRIDGE_URL="http://127.0.0.1:8000" \
+BRIDGE_TOKEN="${GMX_AUTH_TOKEN}" \
+node docs/example.js
 ```
 
-This does two things:
+The example uses an `adapterPath` lookup instead of importing `ccxt` from npm. That is intentional: this repository carries a custom generated `gmx` adapter in `ccxt/js/src/gmx.js`, and the example loads that exact local build so it matches the bridge implementation in this repo. Once the adapter is merged and published through upstream CCXT, this can become a normal package import.
 
-- installs the root Poetry environment, including the local `web3-ethereum-defi` path dependency
-- installs the `ccxt` submodule Node dependencies
-
-### Optional: enable Mermaid support in Codex
-
-This repository includes a project-scoped Codex MCP configuration in `.codex/config.toml` for Mermaid Chart's hosted MCP server.
-
-Codex documents project-scoped MCP config via `.codex/config.toml` for trusted projects. Start Codex from this repository to use it:
-
-```bash
-codex
-```
-
-Core Mermaid rendering and validation tools work without authentication.
-
-If you also want Codex to access your Mermaid Chart projects and saved diagrams, export a Mermaid Chart token before launching Codex:
-
-```bash
-export MERMAID_CHART_TOKEN='<your-mermaid-chart-token>'
-codex
-```
-
-If your Codex install does not yet pick up project-scoped MCP config, copy the same `mcp_servers.mermaid` block into `~/.codex/config.toml`.
-
-Note: the repo's `.mcp.json` is useful for other MCP-aware tools, but Codex reads `.codex/config.toml` or `~/.codex/config.toml`.
-
-### 3. Create a local bridge config
-
-Start from the example file:
-
-```bash
-cp config/gmx-bridge.example.toml config/gmx-bridge.local.toml
-```
-
-Fill in the values you need:
-
-- `server.host` and `server.port`
-- `gmx.rpc_url`
-- optional `gmx.private_key`
-- optional `gmx.wallet_address`
-- optional `server.auth_token`
-
-### 4. Build the CCXT adapter outputs
-
-```bash
-make ccxt-build
-```
-
-This runs the relevant CCXT export, implicit API generation, TypeScript build, and REST transpilation steps so the new `gmx` exchange is available in generated outputs such as:
-
-- `ccxt/js/src/gmx.js`
-- `ccxt/python/ccxt/gmx.py`
-- `ccxt/php/gmx.php`
-
-## Use
-
-### Start the bridge server
-
-```bash
-make server CONFIG=config/gmx-bridge.local.toml
-```
-
-The server exposes:
-
-- `GET /healthz`
-- `GET /describe`
-- `POST /call`
-
-### Request format
-
-The bridge uses a single RPC-style endpoint:
-
-```json
-{
-  "id": "optional-request-id",
-  "method": "fetch_ticker",
-  "args": ["ETH/USDC:USDC"],
-  "kwargs": { "params": {} }
-}
-```
-
-### JavaScript usage
-
-After `make ccxt-build`, you can use the generated JavaScript adapter like this:
+Example code:
 
 ```js
-import gmx from './ccxt/js/src/gmx.js';
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 
-const exchange = new gmx({
-    bridgeUrl: 'http://127.0.0.1:8000',
-    token: 'optional-bearer-token',
+const BRIDGE_URL = process.env.BRIDGE_URL || 'http://127.0.0.1:8000';
+const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN || '';
+const SYMBOL = 'ETH/USDC:USDC';
+const POSITION_SIZE_USD = 5.0;
+
+async function main() {
+  const adapterPath = path.resolve(__dirname, '../ccxt/js/src/gmx.js');
+  const { default: GmxExchange } = await import(pathToFileURL(adapterPath).href);
+
+  const exchange = new GmxExchange({
+    bridgeUrl: BRIDGE_URL,
+    token: BRIDGE_TOKEN,
+    timeout: 180000,
+  });
+
+  const markets = await exchange.loadMarkets();
+  // `loadMarkets()` returns a symbol-keyed map, but its insertion order is not a useful ranking.
+  // Fetch open interest explicitly and sort descending so "top 5 markets" has a clear meaning.
+  const openInterests = await exchange.fetchOpenInterests(Object.keys(markets));
+  const topMarkets = Object.keys(markets)
+    .map((symbol) => ({
+      symbol,
+      openInterestValue: Number(openInterests?.[symbol]?.openInterestValue ?? 0),
+    }))
+    .sort((left, right) => right.openInterestValue - left.openInterestValue)
+    .slice(0, 5);
+  console.log('Top 5 markets by open interest (USD):', topMarkets);
+
+  const openOrder = await exchange.createMarketBuyOrder(SYMBOL, 0, {
+    size_usd: POSITION_SIZE_USD,
+    leverage: 2.0,
+    collateral_symbol: 'USDC',
+    wait_for_execution: true,
+    slippage_percent: 0.005,
+  });
+
+  console.log('Opened long:', openOrder);
+
+  const positionsAfterOpen = await exchange.fetchPositions([SYMBOL]);
+  console.log('Positions after open:', positionsAfterOpen);
+
+  const closeOrder = await exchange.createOrder(SYMBOL, 'market', 'sell', 0, undefined, {
+    size_usd: POSITION_SIZE_USD,
+    collateral_symbol: 'USDC',
+    reduceOnly: true,
+    wait_for_execution: true,
+    slippage_percent: 0.005,
+  });
+
+  console.log('Closed long:', closeOrder);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });
-
-const markets = await exchange.loadMarkets();
-const ticker = await exchange.fetchTicker('ETH/USDC:USDC');
-
-console.log(Object.keys(markets).length, ticker.last);
 ```
-
-### Operational model
-
-- the Python bridge owns the RPC connection and optional signing key
-- the CCXT adapter only needs `bridgeUrl` and optional `token`
-- account-specific reads such as balances and positions require `wallet_address` or a configured signing wallet on the server side
-
-## How To Run Tests
-
-### Python bridge unit tests
-
-```bash
-poetry run pytest tests/python/test_runtime.py
-```
-
-These validate:
-
-- auth handling
-- whitelisted RPC dispatch
-- JSON-safe result serialization
-
-### JavaScript test suite
-
-```bash
-make test-js
-```
-
-This runs the JavaScript tests against the transpiled adapter. Network-dependent suites skip automatically if the required environment is missing.
-
-### Fork-oriented integration tests
-
-Requirements:
-
-- `anvil` installed
-- `JSON_RPC_ARBITRUM` set
-
-Run:
-
-```bash
-make test-fork
-```
-
-These tests:
-
-- start an Anvil fork
-- pin the fork to block `44000000`, defined in `tests/js/helpers/bridge-test-helpers.mjs`
-- start the FastAPI bridge against that fork
-- import the transpiled JS adapter
-- verify read-heavy GMX flows through the remote CCXT adapter
-
-By design, they do not treat successful GMX trade execution on Anvil as a required pass condition.
-
-### Live smoke tests
-
-Optional environment variables:
-
-- `JSON_RPC_ARBITRUM`
-- `JSON_RPC_ARBITRUM_SEPOLIA`
-
-Run:
-
-```bash
-make test-smoke-live
-```
-
-These are read-only smoke tests for live networks and are safe to keep opt-in.
-
-## GitHub CI
-
-The repository includes a GitHub Actions pipeline in `.github/workflows/integration.yml`.
-
-It is split into:
-
-- a default build-and-test job that installs dependencies, builds the CCXT adapter, runs Python tests, and runs the JS suite
-- an optional fork integration job that runs only when `JSON_RPC_ARBITRUM` is configured as a repository secret
-- an optional live smoke job that runs only when `JSON_RPC_ARBITRUM` and/or `JSON_RPC_ARBITRUM_SEPOLIA` secrets are configured
-
-This keeps the default CI deterministic while still supporting richer GMX integration coverage in environments where RPC secrets are available.

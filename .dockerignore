@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+node_modules
+ccxt/node_modules
+ccxt/.git
+tests
+docs
+config
+.local-test.env

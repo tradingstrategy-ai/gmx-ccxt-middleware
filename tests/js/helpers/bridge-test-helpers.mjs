@@ -1,9 +1,7 @@
 // Shared test helpers for starting forks, launching the bridge, and importing the generated adapter.
 
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import net from 'node:net';
@@ -35,7 +33,7 @@ export async function getFreePort() {
     });
 }
 
-export async function waitForHealth(url, token, timeoutMs = 60000) {
+export async function waitForPing(url, token, timeoutMs = 60000) {
     const started = Date.now();
     while ((Date.now() - started) < timeoutMs) {
         try {
@@ -117,18 +115,6 @@ export function spawnManaged(command, args, options = {}) {
     };
 }
 
-export async function createTempConfig(contents) {
-    const dir = await mkdtemp(resolve(tmpdir(), 'gmx-ccxt-server-'));
-    const path = resolve(dir, 'gmx-bridge.local.toml');
-    await writeFile(path, contents, 'utf8');
-    return {
-        path,
-        async cleanup() {
-            await rm(dir, { recursive: true, force: true });
-        },
-    };
-}
-
 export async function importGeneratedExchange() {
     const modulePath = resolve(REPO_ROOT, 'ccxt/js/src/gmx.js');
     assert.ok(existsSync(modulePath), 'Generated ccxt/js/src/gmx.js not found. Run `make ccxt-build` first.');
@@ -145,19 +131,59 @@ export function pickTestSymbol(markets) {
     return symbols[0];
 }
 
-export async function startBridgeServer({ configText, token }) {
-    const config = await createTempConfig(configText);
+export function makeBridgeEnv({
+    rpcUrl,
+    authToken = '',
+    privateKey = '',
+    walletAddress = '',
+    chainId = '',
+    preloadMarkets = false,
+    address = '127.0.0.1:8000',
+    port = 8000,
+    restApiMode = true,
+    graphqlOnly = false,
+    disableMarketCache = false,
+    verbose = false,
+    subsquidEndpoint = '',
+    executionBuffer = 2.2,
+    defaultSlippage = 0.003,
+    vaultAddress = '',
+}) {
+    return {
+        ...process.env,
+        GMX_SERVER_ADDRESS: address || `127.0.0.1:${port}`,
+        GMX_AUTH_TOKEN: authToken,
+        GMX_LOG_LEVEL: 'info',
+        GMX_RPC_URL: rpcUrl,
+        GMX_PRIVATE_KEY: privateKey,
+        GMX_WALLET_ADDRESS: privateKey ? '' : walletAddress,
+        GMX_CHAIN_ID: chainId ? String(chainId) : '',
+        GMX_SUBSQUID_ENDPOINT: subsquidEndpoint,
+        GMX_EXECUTION_BUFFER: String(executionBuffer),
+        GMX_DEFAULT_SLIPPAGE: String(defaultSlippage),
+        GMX_VERBOSE: String(verbose),
+        GMX_PRELOAD_MARKETS: String(preloadMarkets),
+        GMX_REST_API_MODE: String(restApiMode),
+        GMX_GRAPHQL_ONLY: String(graphqlOnly),
+        GMX_DISABLE_MARKET_CACHE: String(disableMarketCache),
+        GMX_VAULT_ADDRESS: vaultAddress,
+    };
+}
+
+export async function startBridgeServer({ env, token }) {
     const port = await getFreePort();
-    const replaced = configText.replace('__PORT__', String(port));
-    await writeFile(config.path, replaced, 'utf8');
-    const process = spawnManaged('poetry', ['run', 'python', '-m', 'gmx_ccxt_server', '--config', config.path]);
+    const process = spawnManaged('poetry', ['run', 'python', '-m', 'gmx_ccxt_server'], {
+        env: {
+            ...env,
+            GMX_SERVER_ADDRESS: `127.0.0.1:${port}`,
+        },
+    });
     const baseUrl = `http://127.0.0.1:${port}`;
     try {
-        await waitForHealth(`${baseUrl}/healthz`, token);
+        await waitForPing(`${baseUrl}/ping`, token);
     } catch (error) {
         const output = process.getOutput();
         await process.stop();
-        await config.cleanup();
         throw new Error(`Bridge server failed to start\nSTDOUT:\n${output.stdout}\nSTDERR:\n${output.stderr}`);
     }
     return {
@@ -165,7 +191,6 @@ export async function startBridgeServer({ configText, token }) {
         token,
         async stop() {
             await process.stop();
-            await config.cleanup();
         },
     };
 }
@@ -204,30 +229,4 @@ export function normaliseRpcUrlForCli(rpcUrl) {
     const entries = rpcUrl.trim().split(/\s+/);
     const preferredEntry = entries.find((entry) => !entry.startsWith('mev+')) ?? entries[0];
     return preferredEntry.replace(/^mev\+/, '');
-}
-
-export function makeConfigText({ rpcUrl, authToken = '', privateKey = '', walletAddress = '', chainId = '', preloadMarkets = false }) {
-    const chainIdLine = chainId ? `chain_id = ${chainId}` : 'chain_id = 42161';
-    return `[server]
-host = "127.0.0.1"
-port = __PORT__
-auth_token = "${authToken}"
-log_level = "info"
-
-[gmx]
-rpc_url = "${rpcUrl}"
-private_key = "${privateKey}"
-wallet_address = "${walletAddress}"
-${chainIdLine}
-subsquid_endpoint = ""
-execution_buffer = 2.2
-default_slippage = 0.003
-verbose = false
-preload_markets = ${preloadMarkets ? 'true' : 'false'}
-
-[gmx.options]
-rest_api_mode = true
-graphql_only = false
-disable_market_cache = false
-`;
 }

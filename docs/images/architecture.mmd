@@ -1,0 +1,31 @@
+flowchart LR
+    classDef repo fill:#edf6ff,stroke:#24527a,stroke-width:1.5,color:#102a43;
+    classDef external fill:#fff6e5,stroke:#8a5a00,stroke-width:1.5,color:#5d3a00;
+
+    subgraph ccxt["CCXT"]
+        direction TB
+        ccxtClient["CCXT client"]
+        gmxExchange["CCXT exchange class<br/>gmx"]
+    end
+
+    subgraph repo["API bridge"]
+        direction TB
+        bridge["FastAPI bridge"]
+        engine["Python GMX engine"]
+    end
+
+    subgraph ext["Arbitrum and GMX"]
+        direction TB
+        rpc["RPC"]
+        services["Other GMX API services"]
+    end
+
+    ccxtClient --> gmxExchange
+    gmxExchange --> bridge
+    bridge --> engine
+
+    engine --> rpc
+    engine --> services
+
+    class ccxtClient,gmxExchange,rpc,services external;
+    class bridge,engine repo;

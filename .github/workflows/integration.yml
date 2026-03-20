@@ -59,8 +59,8 @@ jobs:
 
     env:
       JSON_RPC_ARBITRUM: ${{ secrets.JSON_RPC_ARBITRUM }}
-      GMX_TEST_WALLET_ADDRESS: ${{ secrets.GMX_TEST_WALLET_ADDRESS }}
-      GMX_TEST_PRIVATE_KEY: ${{ secrets.GMX_TEST_PRIVATE_KEY }}
+      GMX_WALLET_ADDRESS: ${{ secrets.GMX_WALLET_ADDRESS }}
+      GMX_PRIVATE_KEY: ${{ secrets.GMX_PRIVATE_KEY }}
 
     steps:
       - name: Check out repository

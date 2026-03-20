@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
     importGeneratedExchange,
-    makeConfigText,
+    makeBridgeEnv,
     pickTestSymbol,
     startBridgeServer,
 } from './helpers/bridge-test-helpers.mjs';
@@ -16,13 +16,13 @@ const runLive = rpcUrl ? test : test.skip;
 
 async function withLiveBridge(fn) {
     const authToken = 'live-market-data-token';
-    const configText = makeConfigText({
+    const env = makeBridgeEnv({
         rpcUrl,
         authToken,
         chainId: 42161,
         preloadMarkets: false,
     });
-    const bridge = await startBridgeServer({ configText, token: authToken });
+    const bridge = await startBridgeServer({ env, token: authToken });
     try {
         const GmxExchange = await importGeneratedExchange();
         const exchange = new GmxExchange({

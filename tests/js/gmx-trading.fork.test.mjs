@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import {
     importGeneratedExchange,
-    makeConfigText,
+    makeBridgeEnv,
     startAnvilFork,
     startBridgeServer,
 } from './helpers/bridge-test-helpers.mjs';
@@ -31,7 +31,7 @@ async function startForkBridge({ privateKey = '', walletAddress = '' } = {}) {
     const authToken = privateKey ? 'fork-private-token' : 'fork-view-token';
     const anvil = await startAnvilFork(forkRpc);
     const bridge = await startBridgeServer({
-        configText: makeConfigText({
+        env: makeBridgeEnv({
             rpcUrl: anvil.rpcUrl,
             authToken,
             privateKey,
