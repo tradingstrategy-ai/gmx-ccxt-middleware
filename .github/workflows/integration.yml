@@ -59,7 +59,6 @@ jobs:
 
     env:
       JSON_RPC_ARBITRUM: ${{ secrets.JSON_RPC_ARBITRUM }}
-      GMX_WALLET_ADDRESS: ${{ secrets.GMX_WALLET_ADDRESS }}
       GMX_PRIVATE_KEY: ${{ secrets.GMX_PRIVATE_KEY }}
 
     steps:
@@ -98,11 +97,10 @@ jobs:
         run: make test-fork
 
   live-smoke:
-    if: ${{ secrets.JSON_RPC_ARBITRUM != '' || secrets.JSON_RPC_ARBITRUM_SEPOLIA != '' }}
+    if: ${{ secrets.JSON_RPC_ARBITRUM_SEPOLIA != '' }}
     runs-on: ubuntu-latest
 
     env:
-      JSON_RPC_ARBITRUM: ${{ secrets.JSON_RPC_ARBITRUM }}
       JSON_RPC_ARBITRUM_SEPOLIA: ${{ secrets.JSON_RPC_ARBITRUM_SEPOLIA }}
 
     steps:

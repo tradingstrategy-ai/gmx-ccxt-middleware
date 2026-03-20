@@ -1,9 +1,9 @@
 services:
   gmx-ccxt-server:
-    image: ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:main
+    image: ${GMX_IMAGE:-ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:latest}
     ports:
       # Publish the bridge on localhost:8000 by default for the host machine.
-      - "127.0.0.1:8000:8000"
+      - "${GMX_PUBLISHED_ADDRESS:-127.0.0.1:8000}:8000"
     environment:
       # Full bind address used by the FastAPI bridge inside the container.
       GMX_SERVER_ADDRESS: ${GMX_SERVER_ADDRESS:-0.0.0.0:8000}
@@ -18,7 +18,8 @@ services:
       # Optional read-only wallet address used when no private key is configured.
       GMX_WALLET_ADDRESS: ${GMX_WALLET_ADDRESS:-}
       # Optional explicit chain id override for the GMX exchange config.
-      GMX_CHAIN_ID: ${GMX_CHAIN_ID:-42161}
+      # Leave unset by default so the bridge can infer the chain from GMX_RPC_URL.
+      GMX_CHAIN_ID: ${GMX_CHAIN_ID:-}
       # Optional custom Subsquid endpoint for GMX event/indexer lookups.
       GMX_SUBSQUID_ENDPOINT: ${GMX_SUBSQUID_ENDPOINT:-}
       # Optional execution buffer for GMX orders; defaults to the safe built-in value 2.2.

@@ -1,12 +1,16 @@
 # GMX CCXT Middleware
 
+[![Acceptance smoke](https://github.com/tradingstrategy-ai/gmx-ccxt-middleware/actions/workflows/acceptance-smoke.yml/badge.svg)](https://github.com/tradingstrategy-ai/gmx-ccxt-middleware/actions/workflows/acceptance-smoke.yml)
+
 GMX CCXT Middleware runs the Python GMX CCXT implementation behind a FastAPI bridge so CCXT clients in other languages can trade on GMX through a simple HTTP endpoint.
 
 The server image is published to GitHub Container Registry:
 
+- `ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:latest`
+- `ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:vN`
 - `ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:main`
 
-For architecture, testing, and contributor workflows, see [docs/architecture.md](docs/architecture.md), [docs/tests.md](docs/tests.md), and [docs/development.md](docs/development.md).
+For configuration, development, architecture, and tests, see [configuration.md](docs/config.md), [development.md](docs/development.md), [architecture.md](docs/architecture.md), and [tests.md](docs/tests.md).
 
 ## Run with Docker
 
@@ -22,9 +26,12 @@ docker compose up -d
 
 The bundled [docker-compose.yaml](docker-compose.yaml) already lists every supported runtime environment variable with a short comment explaining what it does. `GMX_RPC_URL` is optional there and defaults to the public Arbitrum RPC. `GMX_EXECUTION_BUFFER` is also optional and defaults to the safe built-in value `2.2`. The published Docker setup listens on `127.0.0.1:8000` by default.
 
+`docker-compose.yaml` tracks `ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:latest`. The `latest` tag is updated automatically whenever a new numbered release tag such as `v1`, `v2`, or `v3` is published.
+
 The bridge exposes:
 
 - `GET /ping` in [ping.py](src/gmx_ccxt_server/routes/ping.py)
+- `GET /balance` in [balance.py](src/gmx_ccxt_server/routes/balance.py)
 - `GET /describe` in [describe.py](src/gmx_ccxt_server/routes/describe.py)
 - `POST /call` in [call.py](src/gmx_ccxt_server/routes/call.py)
 
@@ -38,7 +45,7 @@ curl \
 
 ## JavaScript Example
 
-Warning: the example below places real Arbitrum mainnet trades. It opens and closes a live ETH long using USDC collateral with a hardcoded 5 USD-sized position.
+Warning: the example below places a real GMX trade with the configured wallet. It first checks that the wallet has enough ETH for gas and enough USDC collateral, then opens and closes a small ETH long so the wallet is returned to flat exposure afterwards.
 
 The full runnable file is [docs/example.js](docs/example.js). Run it with:
 
@@ -60,6 +67,32 @@ const BRIDGE_URL = process.env.BRIDGE_URL || 'http://127.0.0.1:8000';
 const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN || '';
 const SYMBOL = 'ETH/USDC:USDC';
 const POSITION_SIZE_USD = 5.0;
+const POSITION_LEVERAGE = 2.0;
+const MIN_ETH_GAS_BALANCE = Number(process.env.MIN_ETH_GAS_BALANCE || '0.002');
+const MIN_USDC_BALANCE = Number(process.env.MIN_USDC_BALANCE || String((POSITION_SIZE_USD / POSITION_LEVERAGE) + 1.0));
+
+function getCurrencyBalance(balance, currency) {
+  const account = balance?.[currency] ?? {};
+  const free = Number(balance?.free?.[currency] ?? account.free ?? 0);
+  const used = Number(balance?.used?.[currency] ?? account.used ?? 0);
+  const total = Number(balance?.total?.[currency] ?? account.total ?? free + used);
+
+  return {
+    currency,
+    free,
+    used,
+    total,
+  };
+}
+
+function assertMinimumBalance(currencyBalance, minimumRequired, purpose) {
+  if (!Number.isFinite(currencyBalance.total) || currencyBalance.total < minimumRequired) {
+    throw new Error(
+      `Insufficient ${currencyBalance.currency} for ${purpose}. ` +
+      `Need at least ${minimumRequired}, wallet has ${currencyBalance.total}.`,
+    );
+  }
+}
 
 async function main() {
   const adapterPath = path.resolve(__dirname, '../ccxt/js/src/gmx.js');
@@ -70,6 +103,23 @@ async function main() {
     token: BRIDGE_TOKEN,
     timeout: 180000,
   });
+
+  const balance = await exchange.fetchBalance();
+  const ethBalance = getCurrencyBalance(balance, 'ETH');
+  const usdcBalance = getCurrencyBalance(balance, 'USDC');
+  console.log('Wallet balances:', {
+    gas: ethBalance,
+    collateral: usdcBalance,
+  });
+
+  assertMinimumBalance(ethBalance, MIN_ETH_GAS_BALANCE, 'Arbitrum gas');
+  assertMinimumBalance(usdcBalance, MIN_USDC_BALANCE, 'USDC collateral');
+
+  const positionsBeforeOpen = await exchange.fetchPositions([SYMBOL]);
+  console.log('Currently opened positions:', positionsBeforeOpen);
+  if (positionsBeforeOpen.some((position) => position.symbol === SYMBOL)) {
+    throw new Error(`Refusing to run while ${SYMBOL} already has an open position for this wallet.`);
+  }
 
   const markets = await exchange.loadMarkets();
   // `loadMarkets()` returns a symbol-keyed map, but its insertion order is not a useful ranking.
@@ -86,7 +136,7 @@ async function main() {
 
   const openOrder = await exchange.createMarketBuyOrder(SYMBOL, 0, {
     size_usd: POSITION_SIZE_USD,
-    leverage: 2.0,
+    leverage: POSITION_LEVERAGE,
     collateral_symbol: 'USDC',
     wait_for_execution: true,
     slippage_percent: 0.005,
@@ -106,6 +156,9 @@ async function main() {
   });
 
   console.log('Closed long:', closeOrder);
+
+  const positionsAfterClose = await exchange.fetchPositions([SYMBOL]);
+  console.log('Positions after close:', positionsAfterClose);
 }
 
 main().catch((error) => {
@@ -113,3 +166,25 @@ main().catch((error) => {
   process.exitCode = 1;
 });
 ```
+
+## Arbitrum Sepolia Funding
+
+For local smoke testing on Arbitrum Sepolia you usually need three things:
+
+- Sepolia ETH on Arbitrum for gas
+- GMX test stablecoin collateral
+- optional test WETH if you want to inspect balances or experiment with token-level flows directly
+
+For Sepolia ETH, use the [LearnWeb3 Arbitrum Sepolia faucet](https://learnweb3.io/faucets/arbitrum_sepolia/).
+
+For GMX test tokens, the Sepolia deployment uses mintable token contracts, so you can mint test balances to your own wallet directly from Arbiscan by calling `mint(account, amount)` on the relevant token contract:
+
+- `USDC.SG`: [`0x3253a335E7bFfB4790Aa4C25C4250d206E9b9773`](https://sepolia.arbiscan.io/address/0x3253a335E7bFfB4790Aa4C25C4250d206E9b9773#writeContract)
+- `USDC`: [`0x3321Fd36aEaB0d5CdfD26f4A3A93E2D2aAcCB99f`](https://sepolia.arbiscan.io/address/0x3321Fd36aEaB0d5CdfD26f4A3A93E2D2aAcCB99f#writeContract)
+- `WETH`: [`0x980B62Da83eFf3D4576C647993b0c1D7faf17c73`](https://sepolia.arbiscan.io/address/0x980B62Da83eFf3D4576C647993b0c1D7faf17c73#writeContract)
+
+Example: to mint `999` units of `USDC.SG`, call `mint(your_address, 999000000)`, because the token uses `6` decimals.
+
+Pay close attention to the collateral symbol used by the market. On Arbitrum Sepolia, GMX commonly uses `USDC.SG` rather than plain `USDC`, so using the wrong stablecoin variant can cause order validation to fail. If a market is quoted like `ETH/USDC.SG:USDC.SG`, fund the wallet with `USDC.SG` and use `USDC.SG` as the collateral symbol in your order parameters.
+
+These Sepolia funding notes are based on the upstream GMX tutorial material in [`README-GMX-Lagoon.md`](web3-ethereum-defi/eth_defi/gmx/README-GMX-Lagoon.md) and [`lagoon-multichain.rst`](web3-ethereum-defi/docs/source/tutorials/lagoon-multichain.rst).

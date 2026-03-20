@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from .runtime import BridgeRuntime
-from .routes import call_router, describe_router, ping_router
+from .routes import balance_router, call_router, describe_router, ping_router
 
 
 def create_app(runtime: BridgeRuntime) -> FastAPI:
@@ -16,6 +16,7 @@ def create_app(runtime: BridgeRuntime) -> FastAPI:
     app = FastAPI(title="GMX CCXT Bridge", version="0.1.0")
     app.state.runtime = runtime
     app.include_router(ping_router)
+    app.include_router(balance_router)
     app.include_router(describe_router)
     app.include_router(call_router)
     return app

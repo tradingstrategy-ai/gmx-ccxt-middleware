@@ -116,3 +116,33 @@ class BridgeRuntime:
             },
             "exchange": serialize_for_json(description),
         }
+
+    async def balance_payload(self) -> dict[str, Any]:
+        balance = await self.call("fetch_balance")
+        return {
+            "walletAddress": self.config.gmx.wallet_address or getattr(getattr(self.exchange, "wallet", None), "address", None),
+            "hotWalletBalance": self._extract_currency_balance(balance, "ETH"),
+            "usdcBalance": self._extract_currency_balance(balance, "USDC"),
+        }
+
+    @staticmethod
+    def _extract_currency_balance(balance: Any, currency: str) -> dict[str, Any]:
+        if not isinstance(balance, dict):
+            return {
+                "currency": currency,
+                "free": None,
+                "used": None,
+                "total": None,
+            }
+
+        account_entry = balance.get(currency)
+        free_bucket = balance.get("free") if isinstance(balance.get("free"), dict) else {}
+        used_bucket = balance.get("used") if isinstance(balance.get("used"), dict) else {}
+        total_bucket = balance.get("total") if isinstance(balance.get("total"), dict) else {}
+
+        return {
+            "currency": currency,
+            "free": account_entry.get("free") if isinstance(account_entry, dict) and account_entry.get("free") is not None else free_bucket.get(currency),
+            "used": account_entry.get("used") if isinstance(account_entry, dict) and account_entry.get("used") is not None else used_bucket.get(currency),
+            "total": account_entry.get("total") if isinstance(account_entry, dict) and account_entry.get("total") is not None else total_bucket.get(currency),
+        }

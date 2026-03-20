@@ -32,6 +32,32 @@ class FakeExchange:
             "blob": b"\x01\x02",
         }
 
+    def fetch_balance(self):
+        return {
+            "ETH": {
+                "free": Decimal("0.015"),
+                "used": Decimal("0"),
+                "total": Decimal("0.015"),
+            },
+            "USDC": {
+                "free": Decimal("42.5"),
+                "used": Decimal("0"),
+                "total": Decimal("42.5"),
+            },
+            "free": {
+                "ETH": Decimal("0.015"),
+                "USDC": Decimal("42.5"),
+            },
+            "used": {
+                "ETH": Decimal("0"),
+                "USDC": Decimal("0"),
+            },
+            "total": {
+                "ETH": Decimal("0.015"),
+                "USDC": Decimal("42.5"),
+            },
+        }
+
 
 @pytest.fixture()
 def runtime() -> BridgeRuntime:
@@ -67,6 +93,31 @@ def test_app_requires_auth(runtime: BridgeRuntime):
     client = TestClient(app)
     response = client.get("/ping")
     assert response.status_code == 401
+
+
+def test_balance_endpoint_returns_hot_wallet_and_usdc_balances(runtime: BridgeRuntime):
+    app = create_app(runtime)
+    client = TestClient(app)
+    response = client.get(
+        "/balance",
+        headers={"Authorization": "Bearer secret-token"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["walletAddress"] is None
+    assert payload["hotWalletBalance"] == {
+        "currency": "ETH",
+        "free": "0.015",
+        "used": "0",
+        "total": "0.015",
+    }
+    assert payload["usdcBalance"] == {
+        "currency": "USDC",
+        "free": "42.5",
+        "used": "0",
+        "total": "42.5",
+    }
 
 
 def test_load_config_from_env_parses_scalar_settings():

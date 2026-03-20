@@ -84,6 +84,8 @@ docker compose up -d --pull never
 
 Then set the image line in `docker-compose.yaml` temporarily to `gmx-ccxt-middleware:local`, or use a local override file.
 
+The checked-in `docker-compose.yaml` uses `ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:latest`. The `latest` tag is reserved for the most recent numbered release tag.
+
 ## Tests
 
 Run the Python bridge tests:
@@ -108,3 +110,36 @@ make test-testnet
 ```
 
 For environment requirements and coverage goals, see [docs/tests.md](tests.md).
+
+## Release process
+
+Versioned builds are created from Git tags in the form `v1`, `v2`, `v3`, and so on. The Docker workflow already publishes on `v*` tag pushes, so the normal release flow is to mint the next numeric tag and push it.
+
+Use the release helper:
+
+```bash
+scripts/release.sh
+```
+
+The script will:
+
+1. fetch tags from `origin`
+2. find the highest existing numeric `vN` tag
+3. create the next annotated tag on the current `HEAD`
+4. push the tag to GitHub
+5. create a GitHub release with generated notes if `gh` is installed and authenticated
+
+Before running it:
+
+- make sure your working tree is clean
+- make sure you are on the commit you want to release
+- make sure `origin` points at the GitHub repository you want to publish from
+
+Useful options:
+
+- `scripts/release.sh --yes` skips the confirmation prompt
+- `scripts/release.sh --yes --push-only` pushes the tag but skips GitHub release creation
+
+After the tag is pushed, GitHub Actions will build and publish the versioned artefact for that tag.
+
+When the tag matches the release pattern (`v1`, `v2`, `v3`, ...), the Docker publish workflow also moves the container `latest` tag to that same release.
