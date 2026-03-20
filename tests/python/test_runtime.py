@@ -348,6 +348,23 @@ def test_runtime_warns_when_signing_wallet_has_zero_gas_balance(caplog: pytest.L
     assert "0xsigning" in caplog.text
 
 
+def test_runtime_logs_hot_wallet_balance(caplog: pytest.LogCaptureFixture):
+    config = AppConfig(
+        server=ServerSettings(),
+        gmx=GmxSettings(rpc_url="http://localhost:8545", private_key="0xprivate"),
+    )
+    exchange = FakeExchange()
+    exchange.wallet = types.SimpleNamespace(address="0xsigning")
+    runtime = BridgeRuntime(config, exchange)
+
+    with caplog.at_level(logging.INFO):
+        asyncio.run(runtime.log_hot_wallet_balance())
+
+    assert "Hot wallet 0xsigning balance" in caplog.text
+    assert "0.002500 ETH" in caplog.text
+    assert "2500000000000000 wei" in caplog.text
+
+
 def test_runtime_rejects_signing_methods_when_wallet_has_no_gas():
     config = AppConfig(
         server=ServerSettings(),

@@ -1,4 +1,4 @@
-# GMX CCXT Middleware
+# GMX CCXT Middleware Server
 
 [![Acceptance smoke](https://github.com/tradingstrategy-ai/gmx-ccxt-middleware/actions/workflows/acceptance-smoke.yml/badge.svg)](https://github.com/tradingstrategy-ai/gmx-ccxt-middleware/actions/workflows/acceptance-smoke.yml)
 
@@ -44,35 +44,39 @@ Pull the published image from [GitHub Container Registry](https://docs.github.co
 Before the first pull, create a GitHub personal access token with package read access and log Docker into `ghcr.io`; see the [GHCR login guide](https://tradingstrategy.ai/docs/deployment/docker-images.html#login-to-ghcr).
 
 ```bash
-docker pull ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:latest
-
-docker run --detach --rm \
-  --name gmx-ccxt-middleware \
+# Reads hot wallet private key from GMX_PRIVATE_KEY env
+docker run \
+  --tty \
+  --platform linux/amd64 \
   --publish 127.0.0.1:8000:8000 \
-  --env GMX_PRIVATE_KEY="0xyourmainnetprivatekey" \
+  --env GMX_PRIVATE_KEY="$GMX_PRIVATE_KEY" \
   --env GMX_SERVER_AUTH_TOKEN="change-me" \
   ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:latest
 ```
 
 ## JavaScript Example
 
+After GMX CCXT Middleware Server is running, you can interact with GMX like with any other CCXT supported exchange.
+
 Warning: the example below places a real GMX trade with the configured wallet. It first checks that the wallet has enough ETH for gas and enough USDC collateral, then opens and closes a small ETH long so the wallet is returned to flat exposure afterwards.
 
-The full runnable file is [docs/example.js](docs/example.js). Run it with:
+The example code is [docs/example.js](docs/example.js).
+
+Run it with the command below. Run in another terminal so you can watch the server:
 
 ```bash
-GMX_SERVER_URL="http://127.0.0.1:8000" \
-GMX_SERVER_TOKEN="${GMX_SERVER_AUTH_TOKEN}" \
-node docs/example.js
+GMX_SERVER_URL="http://127.0.0.1:8000" GMX_SERVER_TOKEN="change-me" node docs/example.js
 ```
-
-The example uses an `adapterPath` lookup instead of importing `ccxt` from npm. That is intentional: this repository carries a custom generated `gmx` adapter in `ccxt/js/src/gmx.js`, and the example loads that exact local build so it matches the GMX CCXT Middleware Server implementation in this repo. Once the adapter is merged and published through upstream CCXT, this can become a normal package import.
 
 ## Ethereum balances to understand
 
 On Arbitrum and Arbitrum Sepolia, the wallet needs native ETH for gas. This is the chain currency used to pay transaction fees, and it is not an ERC-20 token.
 
 `WETH` is wrapped ETH: an ERC-20 token that is designed to track ETH one-for-one, but it is still a token balance, not gas balance. Holding `WETH` does not by itself let the wallet pay gas fees.
+
+In [GMX trading docs](https://docs.gmx.io/docs/trading/), classic trades on Arbitrum still pay gas in native `ETH`. In the [GMX](https://docs.gmx.io/docs/providing-liquidity/), the ETH/USD market is described as `WETH-USDC`, with `WETH` backing long positions.
+
+That means a GMX wallet view can legitimately show both concepts at once: native `ETH` for gas, and `WETH` as the ERC-20 asset used by GMX markets, collateral flows, or token balances. GMX also normalises `WETH` to `ETH` in some token displays, so an `ETH` symbol in GMX metadata does not always mean spendable native gas in the wallet.
 
 You may also see an `ETH` symbol in token lists or exchange balances. In GMX-related token metadata, that can refer to a market or token entry rather than the wallet's native gas balance. For that reason, the GMX CCXT Middleware Server exposes native gas separately in `fetchStatus().info.gasTokenBalance` and `fetchStatus().info.gasTokenBalanceWei`.
 

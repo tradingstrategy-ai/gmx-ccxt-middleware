@@ -163,6 +163,7 @@ class BridgeRuntime:
         cls._validate_private_key(config)
         exchange = await run_in_threadpool(cls._create_exchange, config)
         runtime = cls(config, exchange)
+        await runtime.log_hot_wallet_balance()
         await runtime.warn_if_zero_gas_balance()
         if config.gmx.preload_markets:
             await runtime.call("load_markets")
@@ -352,6 +353,29 @@ class BridgeRuntime:
             "gasTokenBalance": gas_token_balance,
             "gasTokenBalanceWei": str(balance_wei) if balance_wei is not None else None,
         }
+
+    async def log_hot_wallet_balance(self) -> None:
+        """Log the configured signing wallet native gas balance at startup."""
+
+        if self._is_read_only_mode():
+            return
+
+        wallet_address = self._signing_wallet_address()
+        if not wallet_address:
+            return
+
+        chain_name, balance_wei = await asyncio.gather(self._chain_name(), self._gas_balance_wei())
+        if balance_wei is None:
+            return
+
+        gas_token_symbol = CHAIN_TO_GAS_TOKEN_SYMBOL.get(chain_name or "") or "native gas token"
+        logger.info(
+            "Hot wallet %s balance: %.6f %s (%s wei)",
+            wallet_address,
+            balance_wei / 10**18,
+            gas_token_symbol,
+            balance_wei,
+        )
 
     async def _ensure_signing_wallet_has_gas(self, method: str) -> None:
         """Fail early when a signing call is attempted with zero native gas.
