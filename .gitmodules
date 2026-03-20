@@ -1,0 +1,6 @@
+[submodule "ccxt"]
+	path = ccxt
+	url = git@github.com:tradingstrategy-ai/ccxt-gmx.git
+[submodule "web3-ethereum-defi"]
+	path = web3-ethereum-defi
+	url = git@github.com:tradingstrategy-ai/web3-ethereum-defi.git

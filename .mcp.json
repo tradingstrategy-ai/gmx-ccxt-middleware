@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mermaid-chart": {
+      "command": "npx",
+      "args": ["-y", "@mermaidchart/mcp"],
+      "env": {}
+    }
+  }
+}

@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "poetry"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 2.1.4
+          virtualenvs-in-project: true
+          installer-parallel: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ccxt/package-lock.json
+
+      - name: Install project dependencies
+        run: make install
+
+      - name: Build CCXT adapter outputs
+        run: make ccxt-build
+
+      - name: Run Python bridge tests
+        run: poetry run pytest tests/python/test_runtime.py
+
+      - name: Run JavaScript test suite
+        run: make test-js
+
+  fork-integration:
+    if: ${{ secrets.JSON_RPC_ARBITRUM != '' }}
+    runs-on: ubuntu-latest
+
+    env:
+      JSON_RPC_ARBITRUM: ${{ secrets.JSON_RPC_ARBITRUM }}
+      GMX_TEST_WALLET_ADDRESS: ${{ secrets.GMX_TEST_WALLET_ADDRESS }}
+      GMX_TEST_PRIVATE_KEY: ${{ secrets.GMX_TEST_PRIVATE_KEY }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "poetry"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 2.1.4
+          virtualenvs-in-project: true
+          installer-parallel: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ccxt/package-lock.json
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Install project dependencies
+        run: make install
+
+      - name: Run fork integration tests
+        run: make test-fork
+
+  live-smoke:
+    if: ${{ secrets.JSON_RPC_ARBITRUM != '' || secrets.JSON_RPC_ARBITRUM_SEPOLIA != '' }}
+    runs-on: ubuntu-latest
+
+    env:
+      JSON_RPC_ARBITRUM: ${{ secrets.JSON_RPC_ARBITRUM }}
+      JSON_RPC_ARBITRUM_SEPOLIA: ${{ secrets.JSON_RPC_ARBITRUM_SEPOLIA }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "poetry"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 2.1.4
+          virtualenvs-in-project: true
+          installer-parallel: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ccxt/package-lock.json
+
+      - name: Install project dependencies
+        run: make install
+
+      - name: Run live smoke tests
+        run: make test-smoke-live

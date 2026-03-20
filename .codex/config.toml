@@ -1,0 +1,8 @@
+# Mermaid Chart MCP for Codex.
+# Core diagram validation/rendering works without authentication.
+# To enable Mermaid Chart account integration, export MERMAID_CHART_TOKEN
+# before starting Codex and it will be sent as the Authorization header.
+
+[mcp_servers.mermaid]
+url = "https://mcp.mermaid.ai/mcp"
+env_http_headers = { Authorization = "MERMAID_CHART_TOKEN" }

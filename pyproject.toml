@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "gmx-ccxt-server"
+version = "0.1.0"
+description = "FastAPI bridge for the GMX CCXT Python adapter and remote CCXT exchange stubs"
+authors = ["OpenAI Codex <codex@openai.com>"]
+readme = "README.md"
+packages = [
+  { include = "gmx_ccxt_server", from = "src" },
+]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<4"
+fastapi = "^0.115.12"
+pydantic = "^2.11.1"
+uvicorn = { version = "^0.34.0", extras = ["standard"] }
+web3-ethereum-defi = { path = "./web3-ethereum-defi", develop = true, extras = ["ccxt"] }
+
+[tool.poetry.group.dev.dependencies]
+httpx = "^0.28.1"
+pytest = "^8.3.5"
+
+[tool.poetry.scripts]
+gmx-ccxt-server = "gmx_ccxt_server.__main__:main"
+
+[build-system]
+requires = ["poetry-core>=1.8.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
