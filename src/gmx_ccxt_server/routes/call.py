@@ -12,9 +12,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 
-from ..serialization import serialize_exception, serialize_for_json
-from .auth import require_auth
-from .models import CallRequest
+from gmx_ccxt_server.routes.auth import require_auth
+from gmx_ccxt_server.routes.models import CallRequest
+from gmx_ccxt_server.serialization import serialize_exception, serialize_for_json
 
 router = APIRouter()
 

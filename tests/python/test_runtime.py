@@ -2,18 +2,24 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from decimal import Decimal
 import asyncio
 import sys
 import types
+from datetime import datetime, timezone
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
 
 from gmx_ccxt_server.app import create_app
-from gmx_ccxt_server.config import AppConfig, DEFAULT_GMX_RPC_URL, GmxSettings, ServerSettings, load_config_from_env
+from gmx_ccxt_server.config import DEFAULT_GMX_RPC_URL, AppConfig, GmxSettings, ServerSettings, load_config_from_env
 from gmx_ccxt_server.runtime import BridgeRuntime, MethodNotAllowedError
+
+HTTP_UNAUTHORIZED = 401
+TEST_SERVER_PORT = 18_123
+ARBITRUM_CHAIN_ID = 42_161
+TEST_EXECUTION_BUFFER = 3.5
+TEST_DEFAULT_SLIPPAGE = 0.01
 
 
 class FakeExchange:
@@ -21,16 +27,19 @@ class FakeExchange:
         self.wallet = None
         self.config = None
 
-    def describe(self):
+    @staticmethod
+    def describe():
         return {"id": "gmx", "name": "GMX"}
 
-    def fetch_ticker(self, symbol: str):
+    @staticmethod
+    def fetch_ticker(symbol: str):
         return {
             "symbol": symbol,
             "price": Decimal("1234.50"),
             "timestamp": datetime(2025, 1, 1, tzinfo=timezone.utc),
             "blob": b"\x01\x02",
         }
+
 
 @pytest.fixture()
 def runtime() -> BridgeRuntime:
@@ -65,7 +74,7 @@ def test_app_requires_auth(runtime: BridgeRuntime):
     app = create_app(runtime)
     client = TestClient(app)
     response = client.get("/ping")
-    assert response.status_code == 401
+    assert response.status_code == HTTP_UNAUTHORIZED
 
 
 def test_load_config_from_env_parses_scalar_settings():
@@ -73,7 +82,7 @@ def test_load_config_from_env_parses_scalar_settings():
         {
             "GMX_RPC_URL": "https://arb1.arbitrum.io/rpc",
             "GMX_SERVER_ADDRESS": "127.0.0.1:18123",
-            "GMX_AUTH_TOKEN": "bridge-token",
+            "GMX_SERVER_AUTH_TOKEN": "bridge-token",
             "GMX_CHAIN_ID": "42161",
             "GMX_EXECUTION_BUFFER": "3.5",
             "GMX_DEFAULT_SLIPPAGE": "0.01",
@@ -87,11 +96,11 @@ def test_load_config_from_env_parses_scalar_settings():
     )
 
     assert config.server.address == "127.0.0.1:18123"
-    assert config.server.port == 18123
+    assert config.server.port == TEST_SERVER_PORT
     assert config.server.auth_token == "bridge-token"
-    assert config.gmx.chain_id == 42161
-    assert config.gmx.execution_buffer == 3.5
-    assert config.gmx.default_slippage == 0.01
+    assert config.gmx.chain_id == ARBITRUM_CHAIN_ID
+    assert config.gmx.execution_buffer == TEST_EXECUTION_BUFFER
+    assert config.gmx.default_slippage == TEST_DEFAULT_SLIPPAGE
     assert config.gmx.verbose is True
     assert config.gmx.preload_markets is True
     payload = config.gmx.to_exchange_parameters()

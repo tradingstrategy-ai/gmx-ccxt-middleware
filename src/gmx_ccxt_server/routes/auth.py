@@ -10,7 +10,7 @@ from __future__ import annotations
 from fastapi import Header, HTTPException, Request, status
 
 
-async def require_auth(
+def require_auth(
     request: Request,
     authorization: str | None = Header(default=None),
 ) -> None:

@@ -114,7 +114,7 @@ docker compose -f "${COMPOSE_FILE}" --project-name "${COMPOSE_PROJECT_NAME}" up 
 
 echo "==> Waiting for bridge readiness"
 
-# Poll /ping until the FastAPI container is ready. Because GMX_AUTH_TOKEN is
+# Poll /ping until the FastAPI container is ready. Because GMX_SERVER_AUTH_TOKEN is
 # intentionally left unset, this also checks that the default unauthenticated
 # bridge mode works as expected.
 for _ in $(seq 1 120); do

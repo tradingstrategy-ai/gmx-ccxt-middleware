@@ -6,9 +6,9 @@ This repository exposes the Python GMX CCXT-compatible exchange from the `web3-e
 
 The main moving parts are:
 
-- `src/gmx_ccxt_server/`: FastAPI bridge, config loading, runtime, serialisation
+- `src/gmx_ccxt_server/`: FastAPI GMX CCXT Middleware Server, config loading, runtime, serialisation
 - `docker-compose.yaml`: default runtime entrypoint for the published GHCR image
-- `tests/python/`: Python unit tests for the bridge runtime and HTTP contract
+- `tests/python/`: Python unit tests for the GMX CCXT Middleware Server runtime and HTTP contract
 - `tests/js/`: JavaScript integration and smoke tests against the transpiled CCXT adapter
 - `ccxt/`: upstream CCXT checkout and generated outputs
 - `web3-ethereum-defi/`: upstream Python GMX implementation
@@ -31,7 +31,7 @@ The `ccxt` submodule contains generated files. For adapter changes:
    - `ccxt/python/ccxt/gmx.py`
    - `ccxt/php/gmx.php`
 
-If the bridge contract changes, update the TypeScript adapter and regenerate the CCXT outputs in the same change.
+If the GMX CCXT Middleware Server contract changes, update the TypeScript adapter and regenerate the CCXT outputs in the same change.
 
 ## Install and build
 
@@ -47,13 +47,13 @@ Build the CCXT adapter outputs:
 make ccxt-build
 ```
 
-## Running the bridge
+## Running the GMX CCXT Middleware Server
 
-Export bridge environment variables first:
+Export GMX CCXT Middleware Server environment variables first:
 
 ```shell
 export GMX_PRIVATE_KEY="0xyourprivatekey"
-export GMX_AUTH_TOKEN="change-me"
+export GMX_SERVER_AUTH_TOKEN="change-me"
 export GMX_SERVER_ADDRESS="127.0.0.1:8000"
 ```
 
@@ -85,13 +85,13 @@ Useful environment variables for this project:
 - `GMX_WALLET_ADDRESS`
 - `GMX_RPC_URL`
 - `GMX_SERVER_ADDRESS`
-- `GMX_AUTH_TOKEN`
+- `GMX_SERVER_AUTH_TOKEN`
 
 Not every workflow needs every variable. Read-only smoke tests can run without private key material.
 
 ## Running tests
 
-Run the Python bridge tests:
+Run the Python GMX CCXT Middleware Server tests:
 
 ```shell
 poetry run pytest tests/python/test_runtime.py
@@ -121,4 +121,4 @@ make test-smoke-live
 
 GMX order execution depends on keeper and oracle mechanics. Anvil is suitable for read-heavy coverage and some pending-order lifecycle checks, but it is not the default place to require successful end-to-end GMX trade execution.
 
-Do not treat failed live execution on a plain fork as an automatic bridge or adapter regression unless the test specifically sets up the extra execution machinery required by GMX.
+Do not treat failed live execution on a plain fork as an automatic GMX CCXT Middleware Server or adapter regression unless the test specifically sets up the extra execution machinery required by GMX.

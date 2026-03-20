@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   acceptance-smoke:
-    if: ${{ secrets.JSON_RPC_ARBITRUM_SEPOLIA != '' && secrets.GMX_PRIVATE_KEY != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -19,17 +18,24 @@ jobs:
       GMX_PRIVATE_KEY: ${{ secrets.GMX_PRIVATE_KEY }}
 
     steps:
+      - name: Skip when acceptance smoke secrets are unavailable
+        if: ${{ env.JSON_RPC_ARBITRUM_SEPOLIA == '' || env.GMX_PRIVATE_KEY == '' }}
+        run: echo "Skipping acceptance smoke because JSON_RPC_ARBITRUM_SEPOLIA or GMX_PRIVATE_KEY is not configured."
+
       - name: Check out repository
+        if: ${{ env.JSON_RPC_ARBITRUM_SEPOLIA != '' && env.GMX_PRIVATE_KEY != '' }}
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Set up Python
+        if: ${{ env.JSON_RPC_ARBITRUM_SEPOLIA != '' && env.GMX_PRIVATE_KEY != '' }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install Poetry
+        if: ${{ env.JSON_RPC_ARBITRUM_SEPOLIA != '' && env.GMX_PRIVATE_KEY != '' }}
         uses: snok/install-poetry@v1
         with:
           version: 2.1.4
@@ -37,6 +43,7 @@ jobs:
           installer-parallel: true
 
       - name: Set up Node.js
+        if: ${{ env.JSON_RPC_ARBITRUM_SEPOLIA != '' && env.GMX_PRIVATE_KEY != '' }}
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -44,10 +51,13 @@ jobs:
           cache-dependency-path: ccxt/package-lock.json
 
       - name: Set up Docker Buildx
+        if: ${{ env.JSON_RPC_ARBITRUM_SEPOLIA != '' && env.GMX_PRIVATE_KEY != '' }}
         uses: docker/setup-buildx-action@v3
 
       - name: Install project dependencies
+        if: ${{ env.JSON_RPC_ARBITRUM_SEPOLIA != '' && env.GMX_PRIVATE_KEY != '' }}
         run: make install
 
       - name: Run Docker acceptance smoke test
+        if: ${{ env.JSON_RPC_ARBITRUM_SEPOLIA != '' && env.GMX_PRIVATE_KEY != '' }}
         run: tests/acceptance/smoke-test.sh

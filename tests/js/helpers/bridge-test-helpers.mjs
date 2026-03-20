@@ -152,7 +152,7 @@ export function makeBridgeEnv({
     return {
         ...process.env,
         GMX_SERVER_ADDRESS: address || `127.0.0.1:${port}`,
-        GMX_AUTH_TOKEN: authToken,
+        GMX_SERVER_AUTH_TOKEN: authToken,
         GMX_LOG_LEVEL: 'info',
         GMX_RPC_URL: rpcUrl,
         GMX_PRIVATE_KEY: privateKey,

@@ -1,2 +1,1 @@
 """GMX CCXT FastAPI bridge."""
-

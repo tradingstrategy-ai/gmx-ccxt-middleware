@@ -1,10 +1,10 @@
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
-// Bridge base URL for the Dockerised GMX CCXT middleware.
-const BRIDGE_URL = process.env.BRIDGE_URL || "http://127.0.0.1:8000";
-// Optional bearer token configured on the bridge container.
-const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN || "";
+// Base URL for the Dockerised GMX CCXT Middleware Server.
+const GMX_SERVER_URL = process.env.GMX_SERVER_URL || process.env.BRIDGE_URL || "http://127.0.0.1:8000";
+// Optional bearer token configured on the server container.
+const GMX_SERVER_TOKEN = process.env.GMX_SERVER_TOKEN || process.env.BRIDGE_TOKEN || "";
 // Hardcoded GMX ETH perpetual symbol used in this example.
 const SYMBOL = "ETH/USDC:USDC";
 // Hardcoded example trade size expressed in USD.
@@ -49,14 +49,14 @@ function assertMinimumBalance(currencyBalance, minimumRequired, purpose) {
 
 /*
 Purpose:
-Demonstrate a real bridge trading flow end to end.
+Demonstrate a real GMX CCXT Middleware Server trading flow end to end.
 Steps checked:
-Connect to the Dockerised bridge, check gas and collateral balances, inspect currently open positions,
+Connect to the Dockerised server, check gas and collateral balances, inspect currently open positions,
 open a 5 USD ETH long with USDC collateral, inspect positions again, then close the long.
 */
 async function main() {
   console.warn(
-    "Warning: this script places a real GMX trade through the configured bridge wallet.",
+    "Warning: this script places a real GMX trade through the configured server wallet.",
   );
 
   const adapterPath = path.resolve(__dirname, "../ccxt/js/src/gmx.js");
@@ -65,8 +65,8 @@ async function main() {
   );
 
   const exchange = new GmxExchange({
-    bridgeUrl: BRIDGE_URL,
-    token: BRIDGE_TOKEN,
+    bridgeUrl: GMX_SERVER_URL,
+    token: GMX_SERVER_TOKEN,
     timeout: 180000,
   });
 

@@ -21,19 +21,19 @@ Build the generated CCXT outputs after adapter changes:
 make ccxt-build
 ```
 
-## Run the bridge locally
+## Run the GMX CCXT Middleware Server locally
 
-The bridge now starts from environment variables only.
+The GMX CCXT Middleware Server now starts from environment variables only.
 
 ```bash
 export GMX_PRIVATE_KEY="0xyourprivatekey"
-export GMX_AUTH_TOKEN="change-me"
+export GMX_SERVER_AUTH_TOKEN="change-me"
 export GMX_SERVER_ADDRESS="127.0.0.1:8000"
 
 make server
 ```
 
-If `GMX_RPC_URL` is omitted, the bridge defaults to the public Arbitrum RPC endpoint.
+If `GMX_RPC_URL` is omitted, the GMX CCXT Middleware Server defaults to the public Arbitrum RPC endpoint.
 
 You can also run it directly:
 
@@ -41,7 +41,7 @@ You can also run it directly:
 poetry run python -m gmx_ccxt_server
 ```
 
-Useful optional bridge variables:
+Useful optional GMX CCXT Middleware Server variables:
 
 - `GMX_WALLET_ADDRESS`
 - `GMX_CHAIN_ID`
@@ -68,9 +68,8 @@ Run that local image directly:
 ```bash
 docker run --rm \
   -p 8000:8000 \
-  -e GMX_SERVER_ADDRESS=0.0.0.0:8000 \
   -e GMX_PRIVATE_KEY="0xyourprivatekey" \
-  -e GMX_AUTH_TOKEN="change-me" \
+  -e GMX_SERVER_AUTH_TOKEN="change-me" \
   gmx-ccxt-middleware:local
 ```
 
@@ -88,7 +87,7 @@ The checked-in `docker-compose.yaml` uses `ghcr.io/tradingstrategy-ai/gmx-ccxt-m
 
 ## Tests
 
-Run the Python bridge tests:
+Run the Python GMX CCXT Middleware Server tests:
 
 ```bash
 poetry run pytest tests/python/test_runtime.py

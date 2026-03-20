@@ -2,9 +2,9 @@
 
 ## Purpose
 
-This document defines the testing plan for the GMX bridge server and the remote CCXT `gmx` adapter in this repository.
+This document defines the testing plan for the GMX CCXT Middleware Server and the remote CCXT `gmx` adapter in this repository.
 
-The plan is based on the existing GMX test inventory in `web3-ethereum-defi/tests/gmx` and `web3-ethereum-defi/tests/gmx/ccxt`, which already covers a large amount of GMX functionality in Python. Our goal here is to mirror that coverage for the JavaScript client side of the bridge, while keeping the environments realistic for GMX:
+The plan is based on the existing GMX test inventory in `web3-ethereum-defi/tests/gmx` and `web3-ethereum-defi/tests/gmx/ccxt`, which already covers a large amount of GMX functionality in Python. Our goal here is to mirror that coverage for the JavaScript client side of the GMX CCXT Middleware Server, while keeping the environments realistic for GMX:
 
 - `live`: read-only public and account-read tests against live Arbitrum GMX infrastructure
 - `fork`: Anvil fork tests for transaction construction, request serialisation, order payloads, and non-executed lifecycle checks
@@ -16,7 +16,7 @@ The plan is based on the existing GMX test inventory in `web3-ethereum-defi/test
 
 - Network: Arbitrum One
 - Purpose: read-only coverage for market data, funding, open interest, currencies, markets, and safe account reads
-- Bridge mode: view-only or wallet-address-only
+- GMX CCXT Middleware Server mode: view-only or wallet-address-only
 - No order creation or cancellation
 
 ### Fork
@@ -24,14 +24,14 @@ The plan is based on the existing GMX test inventory in `web3-ethereum-defi/test
 - Network: Anvil fork of Arbitrum One
 - Fork block: `44000000`
 - Purpose: request/response contract tests, market loading, account reads, transaction construction, order payload validation, and pending-order fetch/cancel flows where available
-- Bridge mode: wallet address only, private key wallet, Lagoon wallet
+- GMX CCXT Middleware Server mode: wallet address only, private key wallet, Lagoon wallet
 - No requirement for full GMX keeper-driven execution on fork
 
 ### Testnet
 
 - Network: Arbitrum Sepolia
 - Purpose: real end-to-end signed trading tests
-- Bridge mode: funded private key wallet and funded Lagoon wallet
+- GMX CCXT Middleware Server mode: funded private key wallet and funded Lagoon wallet
 - Used for create/cancel/fetch order lifecycle, leverage and margin updates, and trade history
 - EOA-backed Sepolia tests use `GMX_PRIVATE_KEY` as the signing key environment variable; a separate wallet address env is optional
 
@@ -39,7 +39,7 @@ The plan is based on the existing GMX test inventory in `web3-ethereum-defi/test
 
 The JavaScript test suite is environment-gated. Some variables are required for the whole suite, while others only enable extra coverage.
 
-The bridge itself is now environment-only as well. Test helpers start it by exporting `GMX_*` variables instead of writing temporary config files.
+The GMX CCXT Middleware Server itself is now environment-only as well. Test helpers start it by exporting `GMX_*` variables instead of writing temporary config files.
 
 ### Core RPC variables
 
@@ -87,7 +87,7 @@ These only affect Lagoon-specific tests:
   `JSON_RPC_ARBITRUM`
 - Live account-read tests:
   `JSON_RPC_ARBITRUM` plus either `GMX_WALLET_ADDRESS` or `GMX_PRIVATE_KEY`
-- Fork bridge/error/trading tests:
+- Fork server/error/trading tests:
   `JSON_RPC_ARBITRUM`
 - Sepolia smoke tests:
   `JSON_RPC_ARBITRUM_SEPOLIA`
@@ -115,10 +115,10 @@ These only affect Lagoon-specific tests:
 
 We want all JavaScript integration tests to work across the following wallet configurations where relevant:
 
-- `view-only`: bridge has RPC only, no signing key
-- `wallet-address-only`: bridge has wallet address for account reads, but no signing key
-- `private-key wallet`: bridge has EOA private key and signs trades
-- `Lagoon wallet`: bridge is configured to trade through a Lagoon wallet setup
+- `view-only`: GMX CCXT Middleware Server has RPC only, no signing key
+- `wallet-address-only`: GMX CCXT Middleware Server has wallet address for account reads, but no signing key
+- `private-key wallet`: GMX CCXT Middleware Server has EOA private key and signs trades
+- `Lagoon wallet`: GMX CCXT Middleware Server is configured to trade through a Lagoon wallet setup
 
 For Arbitrum Sepolia EOA tests, the primary signing env is:
 
@@ -130,18 +130,18 @@ Optional companion envs:
 
 Recommended fixture families:
 
-- `liveViewOnlyBridge`
-- `liveWalletAddressBridge`
-- `forkPrivateKeyBridge`
-- `forkLagoonBridge`
-- `testnetPrivateKeyBridge`
-- `testnetLagoonBridge`
+- `liveViewOnlyServer`
+- `liveWalletAddressServer`
+- `forkPrivateKeyServer`
+- `forkLagoonServer`
+- `testnetPrivateKeyServer`
+- `testnetLagoonServer`
 
 ## Module layout
 
 Tests should be grouped by CCXT functionality first, then by environment. Suggested JavaScript modules:
 
-- `tests/js/bridge-contract.test.mjs`
+- `contract test module`
 - `tests/js/gmx-market-data.live.test.mjs`
 - `tests/js/gmx-market-data.fork.test.mjs`
 - `tests/js/gmx-account.live.test.mjs`
@@ -232,7 +232,7 @@ It is split into:
 
 - a default build-and-test job that installs dependencies, builds the CCXT adapter, runs Python tests, and runs the JS suite
 - an optional fork integration job that runs only when `JSON_RPC_ARBITRUM` is configured as a repository secret
-- an optional live smoke job that runs only when `JSON_RPC_ARBITRUM` and/or `JSON_RPC_ARBITRUM_SEPOLIA` secrets are configured
+- an optional live smoke job that runs only when `JSON_RPC_ARBITRUM_SEPOLIA` and `GMX_PRIVATE_KEY` secrets are configured
 
 This keeps the default CI deterministic while still supporting richer GMX integration coverage in environments where RPC secrets are available.
 
@@ -240,13 +240,13 @@ This keeps the default CI deterministic while still supporting richer GMX integr
 
 | Functionality category | Test type | Test module | Test case name | Description of functionality tested |
 | --- | --- | --- | --- | --- |
-| Bridge contract | fork | `tests/js/bridge-contract.test.mjs` | `test_bridge_ping_returns_runtime_metadata` | Verify `GET /ping` returns liveness and non-secret config summary. |
-| Bridge contract | fork | `tests/js/bridge-contract.test.mjs` | `test_bridge_describe_returns_exchange_metadata` | Verify `GET /describe` returns bridge metadata plus GMX `describe()` payload. |
-| Bridge contract | fork | `tests/js/bridge-contract.test.mjs` | `test_bridge_call_serialises_args_and_result` | Verify the JS adapter sends a valid `/call` payload and receives JSON-safe values back. |
-| Bridge contract | fork | `tests/js/bridge-contract.test.mjs` | `test_bridge_rejects_missing_or_invalid_bearer_token` | Verify bridge auth works and maps to CCXT `AuthenticationError`. |
-| Initialisation | fork | `tests/js/bridge-contract.test.mjs` | `test_js_adapter_requires_bridge_url` | Verify constructor validation when `bridgeUrl` is missing. |
-| Initialisation | fork | `tests/js/bridge-contract.test.mjs` | `test_js_adapter_accepts_bridge_url_token_and_timeout` | Verify basic adapter constructor options and successful bootstrap. |
-| Market metadata | live | `tests/js/gmx-market-data.live.test.mjs` | `test_load_markets_live` | Load markets from live GMX through the bridge and verify the symbol map is populated. |
+| GMX CCXT Middleware Server contract | fork | `contract test module` | `ping returns runtime metadata` | Verify `GET /ping` returns liveness and non-secret config summary. |
+| GMX CCXT Middleware Server contract | fork | `contract test module` | `describe returns exchange metadata` | Verify `GET /describe` returns GMX CCXT Middleware Server metadata plus the GMX `describe()` payload. |
+| GMX CCXT Middleware Server contract | fork | `contract test module` | `call serialises args and result` | Verify the JS adapter sends a valid `/call` payload and receives JSON-safe values back. |
+| GMX CCXT Middleware Server contract | fork | `contract test module` | `rejects missing or invalid bearer token` | Verify server auth works and maps to CCXT `AuthenticationError`. |
+| Initialisation | fork | `contract test module` | `adapter requires server URL` | Verify constructor validation when the server URL is missing. |
+| Initialisation | fork | `contract test module` | `adapter accepts server URL, token, and timeout` | Verify basic adapter constructor options and successful bootstrap. |
+| Market metadata | live | `tests/js/gmx-market-data.live.test.mjs` | `test_load_markets_live` | Load markets from live GMX through the GMX CCXT Middleware Server and verify the symbol map is populated. |
 | Market metadata | live | `tests/js/gmx-market-data.live.test.mjs` | `test_fetch_markets_live_returns_ccxt_market_shapes` | Verify `fetchMarkets()` returns a valid CCXT market array with ids, symbols, limits, and precision. |
 | Market metadata | live | `tests/js/gmx-market-data.live.test.mjs` | `test_fetch_currencies_live` | Verify `fetchCurrencies()` exposes the expected settlement and collateral tokens. |
 | Market metadata | live | `tests/js/gmx-market-data.live.test.mjs` | `test_fetch_market_leverage_tiers_live` | Verify `fetchMarketLeverageTiers()` for a core market such as `ETH/USDC:USDC`. |
@@ -275,21 +275,21 @@ This keeps the default CI deterministic while still supporting richer GMX integr
 | Transaction construction | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_create_market_sell_order_builds_valid_request` | Verify `createMarketSellOrder()` request construction and payload serialisation. |
 | Transaction construction | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_create_limit_order_builds_valid_request` | Verify `createLimitOrder()` request shape, trigger fields, and symbol handling. |
 | Transaction construction | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_create_order_supports_size_usd_and_base_amount_modes` | Mirror Python SL/TP sizing tests for `sizeUsd` versus base amount inputs. |
-| Transaction construction | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_order_request_contains_expected_execution_fee_and_slippage_fields` | Verify execution fee, slippage, and order params are forwarded correctly to the bridge. |
+| Transaction construction | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_order_request_contains_expected_execution_fee_and_slippage_fields` | Verify execution fee, slippage, and order params are forwarded correctly to the GMX CCXT Middleware Server. |
 | Transaction construction | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_invalid_symbol_or_zero_amount_raises_invalid_order` | Mirror Python negative order validation cases. |
 | Pending lifecycle | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_fetch_orders_after_pending_order_creation` | If pending orders can be created without keeper execution, verify `fetchOrders()` sees them. |
 | Pending lifecycle | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_fetch_open_orders_pending_only_filter` | Verify `fetchOpenOrders()` with pending-only params mirrors Python cancel-order tests. |
 | Pending lifecycle | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_fetch_order_by_id_after_creation` | Verify `fetchOrder()` works for a created pending order. |
 | Pending lifecycle | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_cancel_order_pending_order` | Verify `cancelOrder()` for a pending order on fork if fixture setup allows it. |
 | Pending lifecycle | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_cancel_orders_batch_pending_orders` | Verify `cancelOrders()` for multiple pending orders if fixture setup allows it. |
-| Account reads | fork | `tests/js/gmx-account.fork.test.mjs` | `test_fetch_balance_private_key_wallet` | Verify `fetchBalance()` via a funded fork EOA bridge instance. |
-| Account reads | fork | `tests/js/gmx-account.fork.test.mjs` | `test_fetch_positions_private_key_wallet` | Verify `fetchPositions()` on a funded fork EOA bridge instance. |
+| Account reads | fork | `tests/js/gmx-account.fork.test.mjs` | `test_fetch_balance_private_key_wallet` | Verify `fetchBalance()` via a funded fork EOA GMX CCXT Middleware Server instance. |
+| Account reads | fork | `tests/js/gmx-account.fork.test.mjs` | `test_fetch_positions_private_key_wallet` | Verify `fetchPositions()` on a funded fork EOA GMX CCXT Middleware Server instance. |
 | Margin and leverage | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_set_leverage_builds_valid_request` | Verify `setLeverage()` request construction, params, and validation. |
 | Margin and leverage | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_fetch_leverage_reads_current_value` | Verify `fetchLeverage()` returns CCXT-compatible leverage info. |
 | Margin and leverage | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_add_margin_builds_valid_request` | Verify `addMargin()` request construction on fork without requiring full execution. |
 | Margin and leverage | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_reduce_margin_builds_valid_request` | Verify `reduceMargin()` request construction on fork without requiring full execution. |
 | Fee reporting | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_order_fee_fields_are_present_in_pending_order_result` | Mirror Python fee reporting and confirm fee fields are surfaced in CCXT order results. |
-| Trading lifecycle | testnet | `tests/js/gmx-trading.testnet.test.mjs` | `test_create_market_buy_order_testnet` | Create a real market buy order on Arbitrum Sepolia using a funded private key bridge. |
+| Trading lifecycle | testnet | `tests/js/gmx-trading.testnet.test.mjs` | `test_create_market_buy_order_testnet` | Create a real market buy order on Arbitrum Sepolia using a funded private-key GMX CCXT Middleware Server setup. |
 | Trading lifecycle | testnet | `tests/js/gmx-trading.testnet.test.mjs` | `test_create_limit_order_testnet` | Create a real limit order on Arbitrum Sepolia. |
 | Trading lifecycle | testnet | `tests/js/gmx-trading.testnet.test.mjs` | `test_fetch_order_after_create_testnet` | Verify `fetchOrder()` after creating a testnet order. |
 | Trading lifecycle | testnet | `tests/js/gmx-trading.testnet.test.mjs` | `test_fetch_open_orders_after_create_testnet` | Verify `fetchOpenOrders()` reflects the created testnet order. |
@@ -299,8 +299,8 @@ This keeps the default CI deterministic while still supporting richer GMX integr
 | Margin and leverage | testnet | `tests/js/gmx-margin.testnet.test.mjs` | `test_set_leverage_testnet` | Verify real leverage update on testnet. |
 | Margin and leverage | testnet | `tests/js/gmx-margin.testnet.test.mjs` | `test_add_margin_testnet` | Verify adding collateral on testnet. |
 | Margin and leverage | testnet | `tests/js/gmx-margin.testnet.test.mjs` | `test_reduce_margin_testnet` | Verify reducing collateral on testnet. |
-| Lagoon wallet | fork | `tests/js/gmx-lagoon.fork.test.mjs` | `test_lagoon_wallet_fetch_balance_and_positions` | Verify Lagoon wallet read paths on fork through the bridge. |
-| Lagoon wallet | fork | `tests/js/gmx-lagoon.fork.test.mjs` | `test_lagoon_wallet_builds_order_requests` | Verify order requests can be constructed for a Lagoon-configured bridge on fork. |
+| Lagoon wallet | fork | `tests/js/gmx-lagoon.fork.test.mjs` | `test_lagoon_wallet_fetch_balance_and_positions` | Verify Lagoon wallet read paths on fork through the GMX CCXT Middleware Server. |
+| Lagoon wallet | fork | `tests/js/gmx-lagoon.fork.test.mjs` | `test_lagoon_wallet_builds_order_requests` | Verify order requests can be constructed for a Lagoon-configured GMX CCXT Middleware Server on fork. |
 | Lagoon wallet | testnet | `tests/js/gmx-lagoon.testnet.test.mjs` | `test_lagoon_wallet_create_and_cancel_order` | Verify a real Lagoon wallet order lifecycle on testnet. |
 | Lagoon wallet | testnet | `tests/js/gmx-lagoon.testnet.test.mjs` | `test_lagoon_wallet_fetch_orders_positions_and_trades` | Verify post-trade reads for Lagoon wallet operation on testnet. |
 
@@ -310,4 +310,4 @@ This keeps the default CI deterministic while still supporting richer GMX integr
 - `fork` tests must not require successful GMX keeper execution
 - `testnet` is the place for real trade lifecycle coverage
 - unsupported CCXT methods must be tested explicitly so the remote adapter stays parity-compatible with the Python implementation
-- every new bridge-exposed CCXT method should add at least one JavaScript client test entry to this document
+- every new GMX CCXT Middleware Server-exposed CCXT method should add at least one JavaScript client test entry to this document

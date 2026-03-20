@@ -4,13 +4,13 @@
 
 ## Introduction
 
-`gmx-ccxt-middleware` provides a REST bridge for GMX, a decentralised perpetual futures exchange that does not ship with a native HTTP API.
+`gmx-ccxt-middleware` provides an HTTP server interface for GMX, a decentralised perpetual futures exchange that does not ship with a native HTTP API.
 
 This repository combines three pieces:
 
 - the existing Python GMX CCXT-compatible implementation from `web3-ethereum-defi`
 - a FastAPI server that exposes that Python exchange over HTTP
-- a new `gmx` exchange in the `ccxt` TypeScript source tree that forwards CCXT calls to the bridge
+- a new `gmx` exchange in the `ccxt` TypeScript source tree that forwards CCXT calls to the GMX CCXT Middleware Server
 
 The result is a server-owned deployment model where RPC settings, wallet address, and private keys stay on the Python side, while the CCXT adapter can be compiled from TypeScript to JavaScript, Python, PHP, and the rest of the CCXT target languages.
 
@@ -30,7 +30,7 @@ For configuration, development, architecture, and tests, see [configuration.md](
 - Private keys stay on the server side instead of being distributed to every CCXT client
 - The project reuses the mature Python GMX adapter instead of re-implementing GMX logic in each language
 - The `ccxt/ts/src/gmx.ts` adapter follows CCXT conventions and can be transpiled through the normal CCXT build flow
-- The bridge is easier to operate in controlled environments, including local forks, bots, and internal services
+- The GMX CCXT Middleware Server is easier to operate in controlled environments, including local forks, bots, and internal services
 - Testing is cleaner because read-heavy flows can run against Anvil forks, while live smoke checks remain opt-in
 
 ![Main architecture](docs/images/architecture.svg)
@@ -39,21 +39,24 @@ For the full breakdown, sequence diagrams, and external integration notes, see [
 
 ## Run with Docker
 
-Set the environment variables you need, then start the published container with Docker Compose.
+Pull the published image from GitHub Container Registry, then run it directly with Docker.
 
 ```bash
-export GMX_PRIVATE_KEY="0xyourmainnetprivatekey"
-export GMX_AUTH_TOKEN="change-me"
+docker pull ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:latest
 
-docker compose pull
-docker compose up -d
+docker run --detach --rm \
+  --name gmx-ccxt-middleware \
+  --publish 127.0.0.1:8000:8000 \
+  --env GMX_PRIVATE_KEY="0xyourmainnetprivatekey" \
+  --env GMX_SERVER_AUTH_TOKEN="change-me" \
+  ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:latest
 ```
 
-The bundled [docker-compose.yaml](docker-compose.yaml) already lists every supported runtime environment variable with a short comment explaining what it does. `GMX_RPC_URL` is optional there and defaults to the public Arbitrum RPC. `GMX_EXECUTION_BUFFER` is also optional and defaults to the safe built-in value `2.2`. The published Docker setup listens on `127.0.0.1:8000` by default.
+`GMX_RPC_URL` is optional there and defaults to the public Arbitrum RPC. `GMX_EXECUTION_BUFFER` is also optional and defaults to the safe built-in value `2.2`. The published Docker setup binds to `0.0.0.0:8000` inside the container and is published on `127.0.0.1:8000` by default in the example above.
 
-`docker-compose.yaml` tracks `ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:latest`. The `latest` tag is updated automatically whenever a new numbered release tag such as `v1`, `v2`, or `v3` is published.
+The `latest` tag is updated automatically whenever a new numbered release tag such as `v1`, `v2`, or `v3` is published.
 
-The bridge exposes:
+The GMX CCXT Middleware Server exposes:
 
 - `GET /ping` in [ping.py](src/gmx_ccxt_server/routes/ping.py)
 - `GET /describe` in [describe.py](src/gmx_ccxt_server/routes/describe.py)
@@ -63,7 +66,7 @@ Example health check:
 
 ```bash
 curl \
-  -H "Authorization: Bearer ${GMX_AUTH_TOKEN}" \
+  -H "Authorization: Bearer ${GMX_SERVER_AUTH_TOKEN}" \
   http://127.0.0.1:8000/ping
 ```
 
@@ -74,143 +77,12 @@ Warning: the example below places a real GMX trade with the configured wallet. I
 The full runnable file is [docs/example.js](docs/example.js). Run it with:
 
 ```bash
-BRIDGE_URL="http://127.0.0.1:8000" \
-BRIDGE_TOKEN="${GMX_AUTH_TOKEN}" \
+GMX_SERVER_URL="http://127.0.0.1:8000" \
+GMX_SERVER_TOKEN="${GMX_SERVER_AUTH_TOKEN}" \
 node docs/example.js
 ```
 
-The example uses an `adapterPath` lookup instead of importing `ccxt` from npm. That is intentional: this repository carries a custom generated `gmx` adapter in `ccxt/js/src/gmx.js`, and the example loads that exact local build so it matches the bridge implementation in this repo. Once the adapter is merged and published through upstream CCXT, this can become a normal package import.
-
-Example code:
-
-```js
-const path = require("node:path");
-const { pathToFileURL } = require("node:url");
-
-const BRIDGE_URL = process.env.BRIDGE_URL || "http://127.0.0.1:8000";
-const BRIDGE_TOKEN = process.env.BRIDGE_TOKEN || "";
-const SYMBOL = "ETH/USDC:USDC";
-const POSITION_SIZE_USD = 5.0;
-const POSITION_LEVERAGE = 2.0;
-const MIN_ETH_GAS_BALANCE = Number(process.env.MIN_ETH_GAS_BALANCE || "0.002");
-const MIN_USDC_BALANCE = Number(
-  process.env.MIN_USDC_BALANCE ||
-    String(POSITION_SIZE_USD / POSITION_LEVERAGE + 1.0),
-);
-
-function getCurrencyBalance(balance, currency) {
-  const account = balance?.[currency] ?? {};
-  const free = Number(balance?.free?.[currency] ?? account.free ?? 0);
-  const used = Number(balance?.used?.[currency] ?? account.used ?? 0);
-  const total = Number(
-    balance?.total?.[currency] ?? account.total ?? free + used,
-  );
-
-  return {
-    currency,
-    free,
-    used,
-    total,
-  };
-}
-
-function assertMinimumBalance(currencyBalance, minimumRequired, purpose) {
-  if (
-    !Number.isFinite(currencyBalance.total) ||
-    currencyBalance.total < minimumRequired
-  ) {
-    throw new Error(
-      `Insufficient ${currencyBalance.currency} for ${purpose}. ` +
-        `Need at least ${minimumRequired}, wallet has ${currencyBalance.total}.`,
-    );
-  }
-}
-
-async function main() {
-  const adapterPath = path.resolve(__dirname, "../ccxt/js/src/gmx.js");
-  const { default: GmxExchange } = await import(
-    pathToFileURL(adapterPath).href
-  );
-
-  const exchange = new GmxExchange({
-    bridgeUrl: BRIDGE_URL,
-    token: BRIDGE_TOKEN,
-    timeout: 180000,
-  });
-
-  const balance = await exchange.fetchBalance();
-  const ethBalance = getCurrencyBalance(balance, "ETH");
-  const usdcBalance = getCurrencyBalance(balance, "USDC");
-  console.log("Wallet balances:", {
-    gas: ethBalance,
-    collateral: usdcBalance,
-  });
-
-  assertMinimumBalance(ethBalance, MIN_ETH_GAS_BALANCE, "Arbitrum gas");
-  assertMinimumBalance(usdcBalance, MIN_USDC_BALANCE, "USDC collateral");
-
-  const positionsBeforeOpen = await exchange.fetchPositions([SYMBOL]);
-  console.log("Currently opened positions:", positionsBeforeOpen);
-  if (positionsBeforeOpen.some((position) => position.symbol === SYMBOL)) {
-    throw new Error(
-      `Refusing to run while ${SYMBOL} already has an open position for this wallet.`,
-    );
-  }
-
-  const markets = await exchange.loadMarkets();
-  // `loadMarkets()` returns a symbol-keyed map, but its insertion order is not a useful ranking.
-  // Fetch open interest explicitly and sort descending so "top 5 markets" has a clear meaning.
-  const openInterests = await exchange.fetchOpenInterests(Object.keys(markets));
-  const topMarkets = Object.keys(markets)
-    .map((symbol) => ({
-      symbol,
-      openInterestValue: Number(
-        openInterests?.[symbol]?.openInterestValue ?? 0,
-      ),
-    }))
-    .sort((left, right) => right.openInterestValue - left.openInterestValue)
-    .slice(0, 5);
-  console.log("Top 5 markets by open interest (USD):", topMarkets);
-
-  const openOrder = await exchange.createMarketBuyOrder(SYMBOL, 0, {
-    size_usd: POSITION_SIZE_USD,
-    leverage: POSITION_LEVERAGE,
-    collateral_symbol: "USDC",
-    wait_for_execution: true,
-    slippage_percent: 0.005,
-  });
-
-  console.log("Opened long:", openOrder);
-
-  const positionsAfterOpen = await exchange.fetchPositions([SYMBOL]);
-  console.log("Positions after open:", positionsAfterOpen);
-
-  const closeOrder = await exchange.createOrder(
-    SYMBOL,
-    "market",
-    "sell",
-    0,
-    undefined,
-    {
-      size_usd: POSITION_SIZE_USD,
-      collateral_symbol: "USDC",
-      reduceOnly: true,
-      wait_for_execution: true,
-      slippage_percent: 0.005,
-    },
-  );
-
-  console.log("Closed long:", closeOrder);
-
-  const positionsAfterClose = await exchange.fetchPositions([SYMBOL]);
-  console.log("Positions after close:", positionsAfterClose);
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
-```
+The example uses an `adapterPath` lookup instead of importing `ccxt` from npm. That is intentional: this repository carries a custom generated `gmx` adapter in `ccxt/js/src/gmx.js`, and the example loads that exact local build so it matches the GMX CCXT Middleware Server implementation in this repo. Once the adapter is merged and published through upstream CCXT, this can become a normal package import.
 
 ## Arbitrum Sepolia testnet
 

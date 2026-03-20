@@ -44,6 +44,9 @@ jobs:
       - name: Install project dependencies
         run: make install
 
+      - name: Run Ruff lint
+        run: poetry run ruff check src tests
+
       - name: Build CCXT adapter outputs
         run: make ccxt-build
 
@@ -54,7 +57,6 @@ jobs:
         run: make test-js
 
   fork-integration:
-    if: ${{ secrets.JSON_RPC_ARBITRUM != '' }}
     runs-on: ubuntu-latest
 
     env:
@@ -62,18 +64,25 @@ jobs:
       GMX_PRIVATE_KEY: ${{ secrets.GMX_PRIVATE_KEY }}
 
     steps:
+      - name: Skip when Arbitrum fork secrets are unavailable
+        if: ${{ env.JSON_RPC_ARBITRUM == '' }}
+        run: echo "Skipping fork integration because JSON_RPC_ARBITRUM is not configured."
+
       - name: Check out repository
+        if: ${{ env.JSON_RPC_ARBITRUM != '' }}
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Set up Python
+        if: ${{ env.JSON_RPC_ARBITRUM != '' }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "poetry"
 
       - name: Install Poetry
+        if: ${{ env.JSON_RPC_ARBITRUM != '' }}
         uses: snok/install-poetry@v1
         with:
           version: 2.1.4
@@ -81,6 +90,7 @@ jobs:
           installer-parallel: true
 
       - name: Set up Node.js
+        if: ${{ env.JSON_RPC_ARBITRUM != '' }}
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -88,34 +98,44 @@ jobs:
           cache-dependency-path: ccxt/package-lock.json
 
       - name: Install Foundry
+        if: ${{ env.JSON_RPC_ARBITRUM != '' }}
         uses: foundry-rs/foundry-toolchain@v1
 
       - name: Install project dependencies
+        if: ${{ env.JSON_RPC_ARBITRUM != '' }}
         run: make install
 
       - name: Run fork integration tests
+        if: ${{ env.JSON_RPC_ARBITRUM != '' }}
         run: make test-fork
 
   live-smoke:
-    if: ${{ secrets.JSON_RPC_ARBITRUM_SEPOLIA != '' }}
     runs-on: ubuntu-latest
 
     env:
       JSON_RPC_ARBITRUM_SEPOLIA: ${{ secrets.JSON_RPC_ARBITRUM_SEPOLIA }}
+      GMX_PRIVATE_KEY: ${{ secrets.GMX_PRIVATE_KEY }}
 
     steps:
+      - name: Skip when Sepolia smoke secrets are unavailable
+        if: ${{ env.JSON_RPC_ARBITRUM_SEPOLIA == '' || env.GMX_PRIVATE_KEY == '' }}
+        run: echo "Skipping live smoke because JSON_RPC_ARBITRUM_SEPOLIA or GMX_PRIVATE_KEY is not configured."
+
       - name: Check out repository
+        if: ${{ env.JSON_RPC_ARBITRUM_SEPOLIA != '' && env.GMX_PRIVATE_KEY != '' }}
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Set up Python
+        if: ${{ env.JSON_RPC_ARBITRUM_SEPOLIA != '' && env.GMX_PRIVATE_KEY != '' }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "poetry"
 
       - name: Install Poetry
+        if: ${{ env.JSON_RPC_ARBITRUM_SEPOLIA != '' && env.GMX_PRIVATE_KEY != '' }}
         uses: snok/install-poetry@v1
         with:
           version: 2.1.4
@@ -123,6 +143,7 @@ jobs:
           installer-parallel: true
 
       - name: Set up Node.js
+        if: ${{ env.JSON_RPC_ARBITRUM_SEPOLIA != '' && env.GMX_PRIVATE_KEY != '' }}
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -130,7 +151,9 @@ jobs:
           cache-dependency-path: ccxt/package-lock.json
 
       - name: Install project dependencies
+        if: ${{ env.JSON_RPC_ARBITRUM_SEPOLIA != '' && env.GMX_PRIVATE_KEY != '' }}
         run: make install
 
       - name: Run live smoke tests
+        if: ${{ env.JSON_RPC_ARBITRUM_SEPOLIA != '' && env.GMX_PRIVATE_KEY != '' }}
         run: make test-smoke-live

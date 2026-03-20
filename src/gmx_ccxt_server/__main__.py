@@ -5,8 +5,8 @@ import logging
 
 import uvicorn
 
-from .app import create_app
-from .runtime import BridgeRuntime
+from gmx_ccxt_server.app import create_app
+from gmx_ccxt_server.runtime import BridgeRuntime
 
 
 def main() -> None:

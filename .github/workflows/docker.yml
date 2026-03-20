@@ -56,7 +56,6 @@ jobs:
           docker run --detach --rm \
             --name gmx-ccxt-middleware-smoke \
             --publish 18000:8000 \
-            --env GMX_SERVER_ADDRESS=0.0.0.0:8000 \
             gmx-ccxt-middleware:ci
           trap 'docker logs gmx-ccxt-middleware-smoke; docker stop gmx-ccxt-middleware-smoke' EXIT
           for attempt in $(seq 1 30); do

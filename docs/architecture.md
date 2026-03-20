@@ -11,20 +11,20 @@ Mermaid source: [architecture.mmd](images/architecture.mmd)
 This overview keeps the top-level shape small:
 
 - The left-hand `CCXT` block groups the external CCXT client and the repo's `gmx` CCXT exchange class in [gmx.ts](../ccxt/ts/src/gmx.ts).
-- The middle `API bridge` block is the `GMX CCXT Middleware Server`, implemented in [__main__.py](../src/gmx_ccxt_server/__main__.py), [app.py](../src/gmx_ccxt_server/app.py), [runtime.py](../src/gmx_ccxt_server/runtime.py), and [config.py](../src/gmx_ccxt_server/config.py).
+- The middle `API server` block is the `GMX CCXT Middleware Server`, implemented in [__main__.py](../src/gmx_ccxt_server/__main__.py), [app.py](../src/gmx_ccxt_server/app.py), [runtime.py](../src/gmx_ccxt_server/runtime.py), and [config.py](../src/gmx_ccxt_server/config.py).
 - The right-hand `Arbitrum and GMX` block groups the external RPC connection and the other GMX API services used by the Python GMX engine in [exchange.py](../web3-ethereum-defi/eth_defi/gmx/ccxt/exchange.py).
 
 ## Middleware Server Detail
 
-![Bridge detail chart](images/architecture-bridge-detail.svg)
+![Middleware Server detail chart](images/architecture-middleware-server-detail.svg)
 
-Mermaid source: [architecture-bridge-detail.mmd](images/architecture-bridge-detail.mmd)
+Mermaid source: [architecture-middleware-server-detail.mmd](images/architecture-middleware-server-detail.mmd)
 
 This chart focuses on the `GMX CCXT Middleware Server` internals:
 
 - The server entrypoint is [__main__.py](../src/gmx_ccxt_server/__main__.py), which starts Uvicorn and builds the app.
 - The FastAPI app wiring is in [app.py](../src/gmx_ccxt_server/app.py), while the public endpoints live in [ping.py](../src/gmx_ccxt_server/routes/ping.py), [describe.py](../src/gmx_ccxt_server/routes/describe.py), and [call.py](../src/gmx_ccxt_server/routes/call.py).
-- Runtime orchestration is in [runtime.py](../src/gmx_ccxt_server/runtime.py), where `BridgeRuntime` enforces the method allow-list and serialises exchange calls.
+- Runtime orchestration is in [runtime.py](../src/gmx_ccxt_server/runtime.py), where the runtime class enforces the method allow-list and serialises exchange calls.
 - Config loading is in [config.py](../src/gmx_ccxt_server/config.py), which maps `GMX_*` environment variables into the Python GMX exchange parameters.
 
 ## Python GMX Detail
@@ -67,7 +67,7 @@ Mermaid source: [architecture-open-position-sequence.mmd](images/architecture-op
 This sequence starts from a JavaScript trading app that imports CCXT and configures `ccxt.gmx`, then follows an open-position call all the way through broadcast and confirmation:
 
 - The JavaScript side uses the repo's `gmx` CCXT exchange class in [gmx.ts](../ccxt/ts/src/gmx.ts), which sends `create_order` to the `GMX CCXT Middleware Server` HTTP contract.
-- The `GMX CCXT Middleware Server` dispatches to `BridgeRuntime` in [runtime.py](../src/gmx_ccxt_server/runtime.py), which calls the Python `GMX` exchange in [exchange.py](../web3-ethereum-defi/eth_defi/gmx/ccxt/exchange.py).
+- The `GMX CCXT Middleware Server` dispatches to the runtime in [runtime.py](../src/gmx_ccxt_server/runtime.py), which calls the Python `GMX` exchange in [exchange.py](../web3-ethereum-defi/eth_defi/gmx/ccxt/exchange.py).
 - The Python GMX code builds an unsigned order transaction through `GMXTrading` in [trading.py](../web3-ethereum-defi/eth_defi/gmx/trading.py) and the order classes in [base_order.py](../web3-ethereum-defi/eth_defi/gmx/order/base_order.py).
 - The transaction is signed, broadcast to Arbitrum through RPC, and the Python CCXT code waits for the transaction receipt.
 - After receipt retrieval, the Python CCXT code extracts the GMX `order_key` and confirms the trade either from the same receipt or by waiting for keeper execution through Subsquid or direct EventEmitter log scanning before returning a closed order to the JavaScript caller.

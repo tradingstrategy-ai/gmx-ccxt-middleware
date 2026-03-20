@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from .runtime import BridgeRuntime
-from .routes import call_router, describe_router, ping_router
+from gmx_ccxt_server.routes import call_router, describe_router, ping_router
+from gmx_ccxt_server.runtime import BridgeRuntime
 
 
 def create_app(runtime: BridgeRuntime) -> FastAPI:

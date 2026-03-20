@@ -8,7 +8,7 @@ services:
       # Full bind address used by the FastAPI bridge inside the container.
       GMX_SERVER_ADDRESS: ${GMX_SERVER_ADDRESS:-0.0.0.0:8000}
       # Optional bearer token required by /ping, /describe, and /call.
-      GMX_AUTH_TOKEN: ${GMX_AUTH_TOKEN:-}
+      GMX_SERVER_AUTH_TOKEN: ${GMX_SERVER_AUTH_TOKEN:-}
       # Python logging level for bridge startup and request logs.
       GMX_LOG_LEVEL: ${GMX_LOG_LEVEL:-info}
       # Optional GMX JSON-RPC override; defaults to the public Arbitrum RPC when omitted.

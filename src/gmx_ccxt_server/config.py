@@ -6,10 +6,10 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
 DEFAULT_GMX_RPC_URL = "https://arb1.arbitrum.io/rpc"
 DEFAULT_EXECUTION_BUFFER = 2.2
 DEFAULT_SLIPPAGE = 0.003
+MAX_SERVER_PORT = 65_535
 
 
 class ServerSettings(BaseModel):
@@ -22,26 +22,30 @@ class ServerSettings(BaseModel):
     @field_validator("address", mode="before")
     @classmethod
     def normalize_address(cls, value: Any) -> str:
-        if value in (None, ""):
+        if value in {None, ""}:
             return "127.0.0.1:8000"
         address = str(value).strip()
         if ":" not in address:
-            raise ValueError("GMX_SERVER_ADDRESS must be in 'host:port' format")
+            msg = "GMX_SERVER_ADDRESS must be in 'host:port' format"
+            raise ValueError(msg)
         host, port_text = address.rsplit(":", 1)
         if not host:
-            raise ValueError("GMX_SERVER_ADDRESS host must not be empty")
+            msg = "GMX_SERVER_ADDRESS host must not be empty"
+            raise ValueError(msg)
         try:
             port = int(port_text)
         except ValueError as exc:
-            raise ValueError("GMX_SERVER_ADDRESS port must be an integer") from exc
-        if not (1 <= port <= 65535):
-            raise ValueError("GMX_SERVER_ADDRESS port must be between 1 and 65535")
+            msg = "GMX_SERVER_ADDRESS port must be an integer"
+            raise ValueError(msg) from exc
+        if not (1 <= port <= MAX_SERVER_PORT):
+            msg = "GMX_SERVER_ADDRESS port must be between 1 and 65535"
+            raise ValueError(msg)
         return f"{host}:{port}"
 
     @field_validator("auth_token", mode="before")
     @classmethod
     def normalize_token(cls, value: Any) -> str | None:
-        if value in (None, ""):
+        if value in {None, ""}:
             return None
         return str(value)
 
@@ -74,7 +78,7 @@ class GmxSettings(BaseModel):
     @field_validator("private_key", "wallet_address", "subsquid_endpoint", "vault_address", mode="before")
     @classmethod
     def normalize_optional_strings(cls, value: Any) -> str | None:
-        if value in (None, ""):
+        if value in {None, ""}:
             return None
         return str(value)
 
@@ -120,7 +124,7 @@ def load_config_from_env(env: Mapping[str, str] | None = None) -> AppConfig:
     env = env or os.environ
     server = ServerSettings(
         address=env.get("GMX_SERVER_ADDRESS", "127.0.0.1:8000"),
-        auth_token=_optional_env(env, "GMX_AUTH_TOKEN"),
+        auth_token=_optional_env(env, "GMX_SERVER_AUTH_TOKEN") or _optional_env(env, "GMX_AUTH_TOKEN"),
         log_level=env.get("GMX_LOG_LEVEL", "info"),
     )
     gmx = GmxSettings(
