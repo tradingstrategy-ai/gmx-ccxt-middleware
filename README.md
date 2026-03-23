@@ -15,6 +15,8 @@ CCXT exchange adapters are written in TypeScript domain specific language varian
 2. CCXT fork has the [GMX exchange here](https://github.com/tradingstrategy-ai/ccxt-gmx) and you can just use this fork or merge commits from here until CCXT officially supports GMX
 3. Note that if you use Python none of this is needed
 
+You can use GMX testnet deployed on Arbitrum Sepolia to test out without real money.
+
 For configuration, development, architecture, API details, and tests, see [configuration.md](docs/config.md), [development.md](docs/development.md), [architecture.md](docs/architecture.md), [api.md](docs/api.md), and [tests.md](docs/tests.md).
 
 This project is funded by an [Arbitrum DAO grant](https://tradingstrategy.ai/blog/trading-strategy-receives-arbitrum-foundation-grant-to-bring-ccxt-support-to-gmx).
