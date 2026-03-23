@@ -1,4 +1,5 @@
 const path = require("node:path");
+const util = require("node:util");
 const { pathToFileURL } = require("node:url");
 
 // Base URL for the Dockerised GMX CCXT Middleware Server.
@@ -21,6 +22,10 @@ const POSITION_LEVERAGE = 2.0;
 const TRADE_MODE = String(process.env.TRADE || "open_and_close")
   .trim()
   .toLowerCase();
+// Optional verbose mode for dumping raw exchange payloads during debugging.
+const VERBOSE_OUTPUT = /^(1|true|yes)$/i.test(
+  String(process.env.VERBOSE_OUTPUT || process.env.DEBUG_OUTPUT || "").trim(),
+);
 // Small gas reserve to avoid starting a trade when the wallet is nearly empty.
 const MIN_ETH_GAS_BALANCE = Number(process.env.MIN_ETH_GAS_BALANCE || "0.002");
 // Conservative USDC requirement: position collateral plus a small operational cushion.
@@ -28,9 +33,182 @@ const MIN_USDC_BALANCE = Number(
   process.env.MIN_USDC_BALANCE ||
     String(POSITION_SIZE_USD / POSITION_LEVERAGE + 1.0),
 );
+/*
+Position reads versus order reads
+================================
+
+This example intentionally uses `fetchPositions(..., { open_positions_source: "rpc" })`
+for position snapshots, but it is important to understand what that means:
+
+1. `fetchOrder(orderId)` tracks the lifecycle of a specific GMX order.
+   The adapter stores the GMX `order_key`, checks whether the order is still
+   pending in the GMX DataStore, and then resolves the final keeper execution
+   result. For order-status questions such as "did my close order execute?" or
+   "what was the final execution tx/hash/price?", `fetchOrder()` is the
+   authoritative API.
+
+2. `fetchPositions()` is different. It is only a point-in-time position
+   snapshot. Even with the RPC source it does not reconcile against a specific
+   order id; it simply asks GMX for current position state and formats the
+   response. Immediately after a close order, that snapshot can still show the
+   previous position for a short period, or show an in-flight state while GMX
+   keeper/oracle updates settle.
+
+3. Because of that distinction, this example uses `fetchPositions()` for
+   human-readable before/after context, but the order returned by
+   `createOrder()` / `createMarketBuyOrder()` is the thing to trust for order
+   execution status. If you need strict confirmation that the close completed,
+   poll `fetchOrder(closeOrder.id)` first and treat `fetchPositions()` as a
+   follow-up verification step instead of the primary signal.
+*/
 const AUTHORITATIVE_POSITION_PARAMS = {
   open_positions_source: "rpc",
 };
+const ANSI = {
+  reset: "\x1b[0m",
+  bold: "\x1b[1m",
+  dim: "\x1b[2m",
+  red: "\x1b[31m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  cyan: "\x1b[36m",
+};
+const USE_COLOUR =
+  Boolean(process.stdout.isTTY) && !("NO_COLOR" in process.env);
+
+// Wrap text in ANSI styles when the current terminal supports colour.
+function colourise(text, ...styles) {
+  if (!USE_COLOUR) {
+    return text;
+  }
+
+  return `${styles.join("")}${text}${ANSI.reset}`;
+}
+
+// Print a highlighted section heading for the current script phase.
+function logSection(title) {
+  console.log(`\n${colourise(title, ANSI.bold, ANSI.cyan)}`);
+}
+
+// Print one labelled value inside the current output section.
+function logField(label, value) {
+  console.log(`  ${colourise(`${label}:`, ANSI.dim)} ${value}`);
+}
+
+// Print an informational message with the standard accent colour.
+function logInfo(message) {
+  console.log(colourise(message, ANSI.cyan));
+}
+
+// Print a success message for a completed step.
+function logSuccess(message) {
+  console.log(colourise(message, ANSI.green));
+}
+
+// Print a warning message for risky or important operator attention.
+function logWarning(message) {
+  console.warn(colourise(message, ANSI.bold, ANSI.yellow));
+}
+
+// Print an error message in a visibly distinct style.
+function logError(message) {
+  console.error(colourise(message, ANSI.bold, ANSI.red));
+}
+
+// Format a numeric value with consistent decimal precision for console output.
+function formatNumber(value, options = {}) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) {
+    return "n/a";
+  }
+
+  return new Intl.NumberFormat("en-GB", {
+    minimumFractionDigits: options.minimumFractionDigits ?? 0,
+    maximumFractionDigits: options.maximumFractionDigits ?? 6,
+  }).format(numberValue);
+}
+
+// Format a value as a USD amount for human-readable summaries.
+function formatUsd(value) {
+  const formatted = formatNumber(value, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return formatted === "n/a" ? formatted : `$${formatted}`;
+}
+
+// Format a token amount with an optional token symbol suffix.
+function formatTokenAmount(value, symbol) {
+  const formatted = formatNumber(value, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 6,
+  });
+  if (formatted === "n/a") {
+    return formatted;
+  }
+
+  return symbol ? `${formatted} ${symbol}` : formatted;
+}
+
+// Format a numeric value as a human-readable USD price.
+function formatPrice(value) {
+  const formatted = formatNumber(value, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  });
+  return formatted === "n/a" ? formatted : `$${formatted}`;
+}
+
+// Format a numeric value as a percentage string.
+function formatPercent(value) {
+  const formatted = formatNumber(value, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 4,
+  });
+  return formatted === "n/a" ? formatted : `${formatted}%`;
+}
+
+// Format a numeric value as a leverage-style multiple.
+function formatMultiple(value) {
+  const formatted = formatNumber(value, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 4,
+  });
+  return formatted === "n/a" ? formatted : `${formatted}x`;
+}
+
+// Shorten a long identifier by keeping the start and end visible.
+function truncateMiddle(value, startLength = 8, endLength = 6) {
+  const text = String(value || "");
+  if (!text) {
+    return "n/a";
+  }
+
+  if (text.length <= startLength + endLength + 3) {
+    return text;
+  }
+
+  return `${text.slice(0, startLength)}...${text.slice(-endLength)}`;
+}
+
+// Render a raw object for opt-in verbose debugging output.
+function inspectVerbose(value) {
+  return util.inspect(value, {
+    depth: null,
+    colors: USE_COLOUR,
+    compact: false,
+  });
+}
+
+// Print a verbose object dump only when debug-style output is enabled.
+function logVerboseBlock(title, value) {
+  if (!VERBOSE_OUTPUT) {
+    return;
+  }
+
+  console.log(`\n${colourise(`${title} (verbose)`, ANSI.bold, ANSI.dim)}`);
+  console.log(inspectVerbose(value));
+}
 
 // Extract a normalised free/used/total balance triplet for one currency.
 function getCurrencyBalance(balance, currency) {
@@ -62,11 +240,26 @@ function assertMinimumBalance(currencyBalance, minimumRequired, purpose) {
   }
 }
 
+// Print the current gas and collateral balances in a compact operator-friendly format.
+function logBalances(gasBalance, usdcBalance) {
+  logSection("Wallet Balances");
+  logField(
+    gasBalance.currency,
+    `${formatTokenAmount(gasBalance.free, gasBalance.currency)} free`,
+  );
+  logField("USDC", `${formatUsd(usdcBalance.free)} free`);
+  logField(
+    "Minimum required",
+    `${formatTokenAmount(MIN_ETH_GAS_BALANCE, gasBalance.currency)} gas, ${formatUsd(MIN_USDC_BALANCE)} collateral`,
+  );
+}
+
 // Fetch wallet balances, log them, and enforce the demo minimums.
 async function validateAndLogWalletBalances(exchange, gasBalance) {
   const balance = await exchange.fetchBalance();
   const usdcBalance = getCurrencyBalance(balance, "USDC");
-  console.log("Wallet balances:", {
+  logBalances(gasBalance, usdcBalance);
+  logVerboseBlock("Wallet balances", {
     gas: gasBalance,
     collateral: usdcBalance,
   });
@@ -93,6 +286,31 @@ function normaliseAddress(address) {
     .toLowerCase();
 }
 
+// Print the currently configured server, chain, wallet, and gas context.
+function logWalletContext(serverPing, status, gasBalance) {
+  logSection("Wallet Context");
+  logField("Server", GMX_SERVER_URL);
+  logField("Trade mode", TRADE_MODE);
+  logField(
+    "Chain",
+    `${serverPing.chain ?? "n/a"} (${serverPing.chainId ?? "n/a"})`,
+  );
+  logField(
+    "Wallet",
+    serverPing.walletConfigured
+      ? truncateMiddle(serverPing.walletAddress)
+      : colourise("not configured", ANSI.red),
+  );
+  logField(
+    "Expected wallet",
+    GMX_WALLET_ADDRESS ? truncateMiddle(GMX_WALLET_ADDRESS) : "not set",
+  );
+  logField(
+    "Gas balance",
+    formatTokenAmount(gasBalance.total, status?.info?.gasTokenSymbol ?? "ETH"),
+  );
+}
+
 // Reject unsupported TRADE modes before the script submits any orders.
 function validateTradeMode(tradeMode) {
   if (!["open_and_close", "open_only"].includes(tradeMode)) {
@@ -116,6 +334,7 @@ function pickFirstFiniteNumber(...values) {
 // Derive a USD position size from the best available position fields.
 function getPositionSizeUsd(position) {
   return pickFirstFiniteNumber(
+    position?.sizeUsd,
     position?.info?.position_size,
     position?.notional,
     position?.contracts && position?.entryPrice
@@ -127,6 +346,7 @@ function getPositionSizeUsd(position) {
 // Derive a USD profit figure from the best available position fields.
 function getPositionProfitUsd(position) {
   return pickFirstFiniteNumber(
+    position?.profitUsd,
     position?.unrealizedPnl,
     position?.info?.pnl_usd,
     position?.info?.pnlUsd,
@@ -141,13 +361,121 @@ function summarisePosition(position) {
     sizeUsd: getPositionSizeUsd(position),
     profitUsd: getPositionProfitUsd(position),
     profitPercent: pickFirstFiniteNumber(
+      position?.profitPercent,
       position?.percentage,
       position?.info?.percent_profit,
     ),
     contracts: pickFirstFiniteNumber(position?.contracts),
     entryPrice: pickFirstFiniteNumber(position?.entryPrice),
     markPrice: pickFirstFiniteNumber(position?.markPrice),
+    leverage: pickFirstFiniteNumber(
+      position?.leverage,
+      position?.info?.leverage,
+    ),
+    collateral: pickFirstFiniteNumber(
+      position?.collateral,
+      position?.initialMargin,
+      position?.info?.initial_collateral_amount_usd,
+    ),
   };
+}
+
+// Convert a parsed position summary into a single readable headline line.
+function formatPositionSummary(summary) {
+  return [
+    `${summary.symbol ?? "unknown"} ${summary.side ?? "position"}`,
+    `size ${formatUsd(summary.sizeUsd)}`,
+    `entry ${formatPrice(summary.entryPrice)}`,
+    `mark ${formatPrice(summary.markPrice)}`,
+    `PnL ${formatUsd(summary.profitUsd)} (${formatPercent(summary.profitPercent)})`,
+    `lev ${formatMultiple(summary.leverage)}`,
+  ].join(" | ");
+}
+
+// Build the display headline for one position row.
+function getPositionHeadline(position) {
+  return formatPositionSummary(summarisePosition(position));
+}
+
+// Print zero or more positions as compact one-line summaries.
+function logPositionList(title, positions) {
+  logSection(title);
+
+  if (!positions.length) {
+    logField("Positions", colourise("none", ANSI.green));
+    return;
+  }
+
+  positions.forEach((position, index) => {
+    console.log(`  ${index + 1}. ${getPositionHeadline(position)}`);
+  });
+}
+
+// Extract the order fields that matter most for console reporting.
+function summariseOrder(order) {
+  return {
+    symbol: order?.symbol ?? null,
+    side: order?.side ?? null,
+    status: order?.status ?? null,
+    sizeUsd: pickFirstFiniteNumber(order?.cost, order?.info?.size_delta_usd),
+    filledAmount: pickFirstFiniteNumber(order?.filled, order?.amount),
+    averagePrice: pickFirstFiniteNumber(
+      order?.average,
+      order?.price,
+      order?.info?.execution_price,
+    ),
+    feeCost: pickFirstFiniteNumber(order?.fee?.cost),
+    feeCurrency: order?.fee?.currency ?? null,
+    executionFeeEth: pickFirstFiniteNumber(order?.info?.execution_fee_eth),
+    txHash: order?.info?.tx_hash ?? order?.id ?? null,
+    executionTxHash: order?.info?.execution_tx_hash ?? null,
+    datetime: order?.datetime ?? null,
+  };
+}
+
+// Format the order fee breakdown into one readable string.
+function formatFeeSummary(summary) {
+  const parts = [];
+  if (summary.feeCurrency && summary.feeCost !== null) {
+    parts.push(formatTokenAmount(summary.feeCost, summary.feeCurrency));
+  }
+  if (summary.executionFeeEth !== null) {
+    parts.push(
+      `${formatTokenAmount(summary.executionFeeEth, "ETH")} execution`,
+    );
+  }
+
+  return parts.length ? parts.join(" + ") : "n/a";
+}
+
+// Print a compact summary of one submitted or executed order.
+function logOrderSummary(title, order) {
+  const summary = summariseOrder(order);
+
+  logSection(title);
+  logField("Symbol", summary.symbol ?? "n/a");
+  logField("Side", summary.side ?? "n/a");
+  logField("Status", colourise(summary.status ?? "n/a", ANSI.green));
+  logField("Size", formatUsd(summary.sizeUsd));
+  logField(
+    "Filled",
+    formatNumber(summary.filledAmount, { maximumFractionDigits: 8 }),
+  );
+  logField("Average price", formatPrice(summary.averagePrice));
+  logField("Fee", formatFeeSummary(summary));
+  logField("Created at", summary.datetime ?? "n/a");
+  logField("Submit tx", truncateMiddle(summary.txHash, 12, 10));
+  logField("Execution tx", truncateMiddle(summary.executionTxHash, 12, 10));
+}
+
+// Print the ranked open-interest market list in a compact table-like form.
+function logTopMarkets(topMarkets) {
+  logSection("Top Markets By Open Interest");
+  topMarkets.forEach((market, index) => {
+    console.log(
+      `  ${index + 1}. ${market.symbol} | OI ${formatUsd(market.openInterestValue)}`,
+    );
+  });
 }
 
 // Load markets, rank them by open interest, and log the top five symbols.
@@ -165,7 +493,8 @@ async function logTopMarketsByOpenInterest(exchange) {
     }))
     .sort((left, right) => right.openInterestValue - left.openInterestValue)
     .slice(0, 5);
-  console.log("Top 5 markets by open interest (USD):", topMarkets);
+  logTopMarkets(topMarkets);
+  logVerboseBlock("Top 5 markets by open interest", topMarkets);
 }
 
 // Query the bridge /ping endpoint to confirm server health and wallet context.
@@ -194,7 +523,7 @@ reuse any pre-existing ETH position or otherwise open a 5 USD ETH long with USDC
 */
 // Run the end-to-end demo trade flow against the configured GMX bridge.
 async function main() {
-  console.warn(
+  logWarning(
     "Warning: this script places a real GMX trade through the configured server wallet.",
   );
   validateTradeMode(TRADE_MODE);
@@ -213,7 +542,8 @@ async function main() {
   const serverPing = await fetchServerPing();
   const status = await exchange.fetchStatus();
   const gasBalance = getGasStatusBalance(status);
-  console.log("GMX CCXT Middleware Server wallet context:", {
+  logWalletContext(serverPing, status, gasBalance);
+  logVerboseBlock("GMX CCXT Middleware Server wallet context", {
     serverUrl: GMX_SERVER_URL,
     tradeMode: TRADE_MODE,
     chain: serverPing.chain ?? null,
@@ -238,20 +568,32 @@ async function main() {
 
   await validateAndLogWalletBalances(exchange, gasBalance);
 
+  // This is a position snapshot only.
+  // It answers "what position state does GMX report right now?" but it does not
+  // answer "did a specific order finish executing?".
+  //
+  // In other words:
+  // - `fetchPositions()` is good for operator visibility
+  // - `fetchOrder(orderId)` is the correct API for order lifecycle tracking
+  //
+  // We still use the RPC-backed position view here because it is the most
+  // authoritative read-side source exposed by the adapter, but it is still a
+  // snapshot and may briefly lag a just-executed close.
   const positionsBeforeOpen = await exchange.fetchPositions(
     [SYMBOL],
     AUTHORITATIVE_POSITION_PARAMS,
   );
-  console.log("Currently opened positions:", positionsBeforeOpen);
+  logPositionList("Positions Before Open", positionsBeforeOpen);
+  logVerboseBlock("Positions before open", positionsBeforeOpen);
   let activePosition = positionsBeforeOpen.find(
     (position) => position.symbol === SYMBOL,
   );
   if (activePosition) {
     const existingPositionSummary = summarisePosition(activePosition);
-    console.log(
-      `Existing ${SYMBOL} position detected, skipping the demo open and reusing it for the close step:`,
-      existingPositionSummary,
+    logInfo(
+      `Existing ${SYMBOL} position detected. Skipping the demo open and reusing it for the close step.`,
     );
+    logField("Reused position", formatPositionSummary(existingPositionSummary));
   }
 
   await logTopMarketsByOpenInterest(exchange);
@@ -264,29 +606,43 @@ async function main() {
       wait_for_execution: true,
       slippage_percent: 0.005,
     });
-    console.log("Opened ETH long:", openOrder);
+    logOrderSummary("Open Order", openOrder);
+    logVerboseBlock("Opened ETH long", openOrder);
 
+    // This second position read is only a convenience snapshot so the example
+    // can show the newly opened exposure in a friendly format.
+    //
+    // If this example ever needs stricter sequencing around order completion,
+    // the correct next step would be:
+    //   `await exchange.fetchOrder(openOrder.id, SYMBOL)`
+    // because `fetchOrder()` follows the GMX order key and keeper execution
+    // flow, whereas `fetchPositions()` only reports the latest visible position
+    // state.
     const positionsAfterOpen = await exchange.fetchPositions(
       [SYMBOL],
       AUTHORITATIVE_POSITION_PARAMS,
     );
-    console.log("Positions after open:", positionsAfterOpen);
+    logPositionList("Positions After Open", positionsAfterOpen);
+    logVerboseBlock("Positions after open", positionsAfterOpen);
     activePosition = positionsAfterOpen.find(
       (position) => position.symbol === SYMBOL,
     );
   } else {
-    console.log("Positions after open:", positionsBeforeOpen);
+    logPositionList("Positions After Open", positionsBeforeOpen);
+    logVerboseBlock("Positions after open", positionsBeforeOpen);
   }
 
   if (TRADE_MODE === "open_only") {
-    console.log(
+    logSuccess(
       `Leaving the active ${SYMBOL} position in place because TRADE=open_only.`,
     );
     return;
   }
 
   if (!activePosition) {
-    throw new Error(`Expected an active ${SYMBOL} position to close, but none was found.`);
+    throw new Error(
+      `Expected an active ${SYMBOL} position to close, but none was found.`,
+    );
   }
 
   const activePositionSummary = summarisePosition(activePosition);
@@ -308,17 +664,30 @@ async function main() {
     undefined,
     closeParams,
   );
-  console.log("Closed active ETH position:", closeOrder);
+  logOrderSummary("Close Order", closeOrder);
+  logVerboseBlock("Closed active ETH position", closeOrder);
 
-  const positionsAfterClose = await exchange.fetchPositions(
-    [SYMBOL],
-    AUTHORITATIVE_POSITION_PARAMS,
-  );
-  console.log("Positions after close:", positionsAfterClose);
+  // Confirm the final close result through the order-centric API instead of a
+  // fresh position snapshot. `fetchOrder()` follows the GMX order key and is
+  // the correct source for "did this close order actually execute?".
+  const confirmedCloseOrder = await exchange.fetchOrder(closeOrder.id, SYMBOL);
+  logOrderSummary("Close Order Confirmed", confirmedCloseOrder);
+  logVerboseBlock("Close order confirmed", confirmedCloseOrder);
+
+  if (confirmedCloseOrder?.status !== "closed") {
+    throw new Error(
+      `Close order ${closeOrder.id} did not resolve to status=closed. Actual status: ${confirmedCloseOrder?.status ?? "unknown"}.`,
+    );
+  }
+
+  logSuccess("Close order confirmed. All ok.");
 }
 
 // Print the top-level script failure and propagate a non-zero exit code.
 main().catch((error) => {
-  console.error(error);
+  logError(error instanceof Error ? error.message : String(error));
+  if (VERBOSE_OUTPUT) {
+    console.error(inspectVerbose(error));
+  }
   process.exitCode = 1;
 });
