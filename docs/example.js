@@ -28,9 +28,10 @@ const VERBOSE_OUTPUT = /^(1|true|yes)$/i.test(
 );
 // Small gas reserve to avoid starting a trade when the wallet is nearly empty.
 const MIN_ETH_GAS_BALANCE = Number(process.env.MIN_ETH_GAS_BALANCE || "0.002");
-// Conservative USDC requirement: position collateral plus a small operational cushion.
-const MIN_USDC_BALANCE = Number(
-  process.env.MIN_USDC_BALANCE ||
+// Conservative collateral requirement: position collateral plus a small operational cushion.
+const MIN_COLLATERAL_BALANCE = Number(
+  process.env.MIN_COLLATERAL_BALANCE ||
+    process.env.MIN_USDC_BALANCE ||
     String(POSITION_SIZE_USD / POSITION_LEVERAGE + 1.0),
 );
 /*
@@ -241,31 +242,42 @@ function assertMinimumBalance(currencyBalance, minimumRequired, purpose) {
 }
 
 // Print the current gas and collateral balances in a compact operator-friendly format.
-function logBalances(gasBalance, usdcBalance) {
+function logBalances(gasBalance, collateralBalance) {
   logSection("Wallet Balances");
   logField(
     gasBalance.currency,
     `${formatTokenAmount(gasBalance.free, gasBalance.currency)} free`,
   );
-  logField("USDC", `${formatUsd(usdcBalance.free)} free`);
+  logField(
+    collateralBalance.currency,
+    `${formatUsd(collateralBalance.free)} free`,
+  );
   logField(
     "Minimum required",
-    `${formatTokenAmount(MIN_ETH_GAS_BALANCE, gasBalance.currency)} gas, ${formatUsd(MIN_USDC_BALANCE)} collateral`,
+    `${formatTokenAmount(MIN_ETH_GAS_BALANCE, gasBalance.currency)} gas, ${formatUsd(MIN_COLLATERAL_BALANCE)} collateral`,
   );
 }
 
 // Fetch wallet balances, log them, and enforce the demo minimums.
-async function validateAndLogWalletBalances(exchange, gasBalance) {
+async function validateAndLogWalletBalances(
+  exchange,
+  gasBalance,
+  collateralSymbol,
+) {
   const balance = await exchange.fetchBalance();
-  const usdcBalance = getCurrencyBalance(balance, "USDC");
-  logBalances(gasBalance, usdcBalance);
+  const collateralBalance = getCurrencyBalance(balance, collateralSymbol);
+  logBalances(gasBalance, collateralBalance);
   logVerboseBlock("Wallet balances", {
     gas: gasBalance,
-    collateral: usdcBalance,
+    collateral: collateralBalance,
   });
 
   assertMinimumBalance(gasBalance, MIN_ETH_GAS_BALANCE, "Arbitrum gas");
-  assertMinimumBalance(usdcBalance, MIN_USDC_BALANCE, "USDC collateral");
+  assertMinimumBalance(
+    collateralBalance,
+    MIN_COLLATERAL_BALANCE,
+    `${collateralSymbol} collateral`,
+  );
 }
 
 // Read the native gas token balance from fetchStatus() output.
@@ -318,6 +330,18 @@ function validateTradeMode(tradeMode) {
       `Unsupported TRADE mode "${tradeMode}". Expected "open_and_close" or "open_only".`,
     );
   }
+}
+
+// Pick the market collateral token that GMX actually accepts for this symbol.
+function resolveCollateralSymbol(market) {
+  return String(
+    process.env.GMX_COLLATERAL_SYMBOL ||
+      process.env.COLLATERAL_SYMBOL ||
+      market?.info?.short_token_metadata?.symbol ||
+      market?.settle ||
+      market?.quote ||
+      "USDC",
+  ).trim();
 }
 
 // Return the first value that can be safely converted to a finite number.
@@ -519,7 +543,7 @@ Purpose:
 Demonstrate a real GMX CCXT Middleware Server trading flow end to end.
 Steps checked:
 Connect to the Dockerised server, check gas and collateral balances, inspect currently open positions,
-reuse any pre-existing ETH position or otherwise open a 5 USD ETH long with USDC collateral, inspect positions again, then optionally close the active position depending on TRADE mode.
+reuse any pre-existing ETH position or otherwise open a 5 USD ETH long with the market-supported collateral, inspect positions again, then optionally close the active position depending on TRADE mode.
 */
 // Run the end-to-end demo trade flow against the configured GMX bridge.
 async function main() {
@@ -541,8 +565,15 @@ async function main() {
 
   const serverPing = await fetchServerPing();
   const status = await exchange.fetchStatus();
+  const markets = await exchange.loadMarkets();
+  const market = markets?.[SYMBOL];
+  if (!market) {
+    throw new Error(`Market ${SYMBOL} is not available on this GMX bridge.`);
+  }
+  const collateralSymbol = resolveCollateralSymbol(market);
   const gasBalance = getGasStatusBalance(status);
   logWalletContext(serverPing, status, gasBalance);
+  logField("Demo collateral", collateralSymbol);
   logVerboseBlock("GMX CCXT Middleware Server wallet context", {
     serverUrl: GMX_SERVER_URL,
     tradeMode: TRADE_MODE,
@@ -553,6 +584,12 @@ async function main() {
     gasTokenSymbol: status?.info?.gasTokenSymbol ?? null,
     gasTokenBalance: status?.info?.gasTokenBalance ?? null,
     expectedWalletAddress: GMX_WALLET_ADDRESS || null,
+    marketSymbol: market.symbol,
+    marketQuote: market.quote,
+    marketSettle: market.settle,
+    shortTokenSymbol: market?.info?.short_token_metadata?.symbol ?? null,
+    longTokenSymbol: market?.info?.long_token_metadata?.symbol ?? null,
+    collateralSymbol,
   });
 
   if (
@@ -566,7 +603,7 @@ async function main() {
     );
   }
 
-  await validateAndLogWalletBalances(exchange, gasBalance);
+  await validateAndLogWalletBalances(exchange, gasBalance, collateralSymbol);
 
   // This is a position snapshot only.
   // It answers "what position state does GMX report right now?" but it does not
@@ -602,7 +639,7 @@ async function main() {
     const openOrder = await exchange.createMarketBuyOrder(SYMBOL, 0, {
       size_usd: POSITION_SIZE_USD,
       leverage: POSITION_LEVERAGE,
-      collateral_symbol: "USDC",
+      collateral_symbol: collateralSymbol,
       wait_for_execution: true,
       slippage_percent: 0.005,
     });
@@ -647,7 +684,7 @@ async function main() {
 
   const activePositionSummary = summarisePosition(activePosition);
   const closeParams = {
-    collateral_symbol: "USDC",
+    collateral_symbol: collateralSymbol,
     reduceOnly: true,
     wait_for_execution: true,
     slippage_percent: 0.005,
