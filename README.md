@@ -4,25 +4,20 @@
 
 ## Introduction
 
-`gmx-ccxt-middleware` provides an HTTP server interface for GMX, a decentralised perpetual futures exchange that does not ship with a native HTTP API.
+This example providers [CCXT](https://tradingstrategy.ai/glossary/ccxt)-compatible exchange adapter for [GMX](https://tradingstrategy.ai/glossary/gmx),
+a decentralised [perpetual futures](https://tradingstrategy.ai/glossary/gmx) exchange, its companion HTTP REST middleware server for non-Python programming languages.
 
-This repository combines three pieces:
+CCXT exchange adapters are written in TypeScript domain specific language variant (DSL) specific to CCXT project. TypeScript is then transpiled to other prgoramming languages like JavaScript, Rust and Java. This DSL is not expressive enough to support pure onchain exchanges like GMX. This REST server offers a lightweight wrapper around GMX Python CCXT connector, which does the heavy lifting by mapping the onchain functionalities to simpler CCXT digestable format.
 
-- the existing Python GMX CCXT-compatible implementation from `web3-ethereum-defi`
-- a FastAPI server that exposes that Python exchange over HTTP
-- a new `gmx` exchange in the `ccxt` TypeScript source tree that forwards CCXT calls to the GMX CCXT Middleware Server
+![Main architecture](docs/images/architecture.svg)
 
-The result is a server-owned deployment model where RPC settings, wallet address, and private keys stay on the Python side, while the CCXT adapter can be compiled from TypeScript to JavaScript, Python, PHP, and the rest of the CCXT target languages.
-
-If you are familiar with the `gmx-ccxt-freqtrade` tutorial repository, this project sits one layer lower in the stack: instead of wiring GMX directly into a Python trading bot, it turns the existing Python GMX adapter into a reusable HTTP service and a remote CCXT exchange.
-
-The server image is published to GitHub Container Registry:
-
-- `ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:latest`
-- `ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:vN`
-- `ghcr.io/tradingstrategy-ai/gmx-ccxt-middleware:main`
+1. You start the middleware server with your private key configured
+2. CCXT fork has the [GMX exchange here](https://github.com/tradingstrategy-ai/ccxt-gmx) and you can just use this fork or merge commits from here until CCXT officially supports GMX
+3. Note that if you use Python none of this is needed
 
 For configuration, development, architecture, API details, and tests, see [configuration.md](docs/config.md), [development.md](docs/development.md), [architecture.md](docs/architecture.md), [api.md](docs/api.md), and [tests.md](docs/tests.md).
+
+This project is funded by an [Arbitrum DAO grant](https://tradingstrategy.ai/blog/trading-strategy-receives-arbitrum-foundation-grant-to-bring-ccxt-support-to-gmx).
 
 ## Benefits
 
@@ -32,8 +27,6 @@ For configuration, development, architecture, API details, and tests, see [confi
 - The `ccxt/ts/src/gmx.ts` adapter follows CCXT conventions and can be transpiled through the normal CCXT build flow
 - The GMX CCXT Middleware Server is easier to operate in controlled environments, including local forks, bots, and internal services
 - Testing is cleaner because read-heavy flows can run against Anvil forks, while live smoke checks remain opt-in
-
-![Main architecture](docs/images/architecture.svg)
 
 For the full breakdown, sequence diagrams, and external integration notes, see [architecture.md](docs/architecture.md).
 
