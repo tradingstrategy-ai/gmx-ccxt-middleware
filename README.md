@@ -57,7 +57,13 @@ Warning: the example below places a real GMX trade with the configured wallet. I
 
 The example code is [docs/example.js](docs/example.js).
 
-Run it with the command below. Run in another terminal so you can watch the server:
+Install the `ccxt` submodule's JavaScript dependencies once, if you have not already:
+
+```bash
+cd ccxt && npm install && cd ..
+```
+
+Run the example with the command below. Run in another terminal so you can watch the server:
 
 ```bash
 GMX_SERVER_URL="http://127.0.0.1:8000" GMX_SERVER_TOKEN="change-me" node docs/example.js
@@ -95,7 +101,7 @@ For GMX test tokens, the Sepolia deployment uses mintable token contracts, so yo
 
 Example: to mint `999` units of `USDC.SG`, call `mint(your_address, 999000000)`, because the token uses `6` decimals.
 
-Pay close attention to the collateral symbol used by the market. On Arbitrum Sepolia, GMX commonly uses `USDC.SG` rather than plain `USDC`, so using the wrong stablecoin variant can cause order validation to fail. If a market is quoted like `ETH/USDC.SG:USDC.SG`, fund the wallet with `USDC.SG` and use `USDC.SG` as the collateral symbol in your order parameters.
+Pay close attention to the collateral symbol used by the market. On Arbitrum Sepolia, GMX commonly backs markets with `USDC.SG` rather than plain `USDC`, so funding the wallet with the wrong stablecoin variant can cause order validation to fail. The ccxt symbol itself normalises to plain `USDC` (for example `ETH/USDC:USDC` from `loadMarkets()`) — the `USDC.SG` detail only shows up one level down, in `market.info.short_token_metadata.symbol`. Check that field, not the top-level symbol string, before funding the wallet.
 
 These Sepolia funding notes are based on the upstream GMX tutorial material in [`README-GMX-Lagoon.md`](web3-ethereum-defi/eth_defi/gmx/README-GMX-Lagoon.md) and [`lagoon-multichain.rst`](web3-ethereum-defi/docs/source/tutorials/lagoon-multichain.rst).
 
