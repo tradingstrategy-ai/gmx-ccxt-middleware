@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 FROM python:3.11-slim
+COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /uvx /usr/local/bin/
 
 ARG POETRY_VERSION=2.1.4
 ARG GIT_VERSION_TAG=dev
@@ -11,7 +12,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     POETRY_VIRTUALENVS_CREATE=false \
     POETRY_NO_INTERACTION=1 \
-    PIP_CACHE_DIR=/root/.cache/pip \
+    UV_CACHE_DIR=/root/.cache/uv \
     POETRY_CACHE_DIR=/root/.cache/pypoetry \
     GMX_SERVER_ADDRESS=0.0.0.0:8000
 
@@ -21,14 +22,14 @@ RUN apt-get update \
     && apt-get install --yes --no-install-recommends build-essential curl git \
     && rm -rf /var/lib/apt/lists/*
 
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install "poetry==${POETRY_VERSION}"
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system "poetry==${POETRY_VERSION}"
 
 COPY pyproject.toml poetry.lock README.md /app/
 COPY src /app/src
 COPY web3-ethereum-defi /app/web3-ethereum-defi
 
-RUN --mount=type=cache,target=/root/.cache/pip \
+RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/root/.cache/pypoetry \
     poetry install --only main --no-ansi
 
