@@ -58,6 +58,11 @@ async function expectExchangeError(promise, messagePattern) {
     });
 }
 
+// Same convention as gmx-trading.testnet.test.mjs's extractOrderId().
+function extractOrderId(order) {
+    return order?.id || order?.info?.order_key || order?.info?.tx_hash || null;
+}
+
 /*
 Purpose:
 Verify fork write methods fail cleanly when the bridge has no wallet configured.
@@ -83,15 +88,22 @@ runForkTest('fork trading: order methods reject cleanly in view-only mode', asyn
 Purpose:
 Verify the fork bridge can progress past wallet setup into the GMX contract path.
 Steps checked:
-Start the fork bridge with a dev private key, call createLimitOrder, and assert the failure comes from the chain/integration layer rather than wallet setup.
+Start the fork bridge with a dev private key, call createLimitOrder with an ETH-collateralised
+order the Anvil dev account can actually fund, and assert it reaches the chain and comes back
+as a real pending order rather than failing at the wallet-setup layer.
 */
-runForkTest('fork trading: private-key wallet reaches chain execution path before failing', async () => {
+runForkTest('fork trading: private-key wallet reaches chain execution path and submits a real order', async () => {
     const { anvil, bridge, exchange } = await startForkBridge({ privateKey: ANVIL_DEV_PRIVATE_KEY });
     try {
-        await expectExchangeError(
-            exchange.createLimitOrder('ETH/USDC:USDC', 'buy', 0.001, 1000),
-            /Could not transact with\/call contract function, is contract deployed correctly and chain synced\?|request timed out/i,
-        );
+        // 0.01 ETH @ 1000 = $10 notional, clears the GMX_MIN_COST_USD = 2 pre-flight guard
+        // added in eth_defi (see exchange.py); 0.001 ($1) is rejected before it ever reaches
+        // the chain-execution path this test is meant to probe. The Anvil dev account's
+        // default ETH balance is more than enough to collateralise this order natively (long
+        // side, ETH-margined), so unlike the equivalent Sepolia flow it does not need any
+        // pre-funded USDC — the order genuinely reaches and clears the chain layer.
+        const order = await exchange.createLimitOrder('ETH/USDC:USDC', 'buy', 0.01, 1000);
+        assert.ok(extractOrderId(order), 'createLimitOrder should return an order id or tx hash');
+        assert.ok(['open', 'pending'].includes(order.status), `unexpected order status: ${order.status}`);
     } finally {
         await bridge.stop();
         await anvil.stop();
