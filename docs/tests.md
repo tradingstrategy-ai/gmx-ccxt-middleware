@@ -139,19 +139,25 @@ Recommended fixture families:
 
 ## Module layout
 
-Tests should be grouped by CCXT functionality first, then by environment. Suggested JavaScript modules:
+Tests should be grouped by CCXT functionality first, then by environment.
 
-- `contract test module`
+Modules that exist today:
+
+- `tests/js/bridge-contract.test.mjs`
+- `tests/js/gmx-smoke.test.mjs`
 - `tests/js/gmx-market-data.live.test.mjs`
-- `tests/js/gmx-market-data.fork.test.mjs`
 - `tests/js/gmx-account.live.test.mjs`
-- `tests/js/gmx-account.fork.test.mjs`
 - `tests/js/gmx-trading.fork.test.mjs`
 - `tests/js/gmx-trading.testnet.test.mjs`
 - `tests/js/gmx-margin.testnet.test.mjs`
 - `tests/js/gmx-lagoon.fork.test.mjs`
 - `tests/js/gmx-lagoon.testnet.test.mjs`
 - `tests/js/gmx-errors.test.mjs`
+
+Planned, not yet implemented:
+
+- `tests/js/gmx-market-data.fork.test.mjs`
+- `tests/js/gmx-account.fork.test.mjs`
 
 ## Coverage goals
 
@@ -236,16 +242,30 @@ It is split into:
 
 This keeps the default CI deterministic while still supporting richer GMX integration coverage in environments where RPC secrets are available.
 
+As of this writing, `JSON_RPC_ARBITRUM` is not configured as a repository secret, so the fork
+integration job always self-skips, and none of the fork-gated JS tests below have run in CI.
+The default build-and-test job's own "Run JavaScript test suite" step also requires RPC env
+vars that are not set at that job level, so its JS run reports green with every test
+self-skipped rather than exercising real coverage — a passing `build-and-test` check does not
+mean the JS suite ran.
+
+`tests/js/gmx-lagoon.fork.test.mjs` is not part of the fork integration job's test selection
+(see `Makefile`'s `test-fork` target, which lists only `gmx-smoke`, `bridge-contract`,
+`gmx-errors`, and `gmx-trading.fork`). It also requires Lagoon-specific secrets
+(`GMX_LAGOON_SAFE_ADDRESS`, `GMX_LAGOON_ASSET_MANAGER_PRIVATE_KEY`) that are not part of any
+CI job today. Lagoon fork coverage is therefore at 0% in CI regardless of `JSON_RPC_ARBITRUM`.
+
 ## Test matrix
 
 | Functionality category | Test type | Test module | Test case name | Description of functionality tested |
 | --- | --- | --- | --- | --- |
-| GMX CCXT Middleware Server contract | fork | `contract test module` | `ping returns runtime metadata` | Verify `GET /ping` returns liveness and non-secret config summary. |
-| GMX CCXT Middleware Server contract | fork | `contract test module` | `describe returns exchange metadata` | Verify `GET /describe` returns GMX CCXT Middleware Server metadata plus the GMX `describe()` payload. |
-| GMX CCXT Middleware Server contract | fork | `contract test module` | `call serialises args and result` | Verify the JS adapter sends a valid `/call` payload and receives JSON-safe values back. |
-| GMX CCXT Middleware Server contract | fork | `contract test module` | `rejects missing or invalid bearer token` | Verify server auth works and maps to CCXT `AuthenticationError`. |
-| Initialisation | fork | `contract test module` | `adapter requires server URL` | Verify constructor validation when the server URL is missing. |
-| Initialisation | fork | `contract test module` | `adapter accepts server URL, token, and timeout` | Verify basic adapter constructor options and successful bootstrap. |
+| GMX CCXT Middleware Server contract | fork | `tests/js/bridge-contract.test.mjs` | `test_bridge_ping_returns_runtime_metadata` | Verify `GET /ping` returns liveness and non-secret config summary. |
+| GMX CCXT Middleware Server contract | fork | `tests/js/bridge-contract.test.mjs` | `test_bridge_describe_returns_exchange_metadata` | Verify `GET /describe` returns GMX CCXT Middleware Server metadata plus the GMX `describe()` payload. |
+| GMX CCXT Middleware Server contract | fork | `tests/js/bridge-contract.test.mjs` | `test_bridge_call_returns_serialized_describe_payload` | Verify the JS adapter sends a valid `/call` payload and receives JSON-safe values back. |
+| GMX CCXT Middleware Server contract | fork | `tests/js/bridge-contract.test.mjs` | `test_bridge_fetch_status_info_includes_wallet_address` | Verify `fetchStatus()` surfaces wallet address and gas-token balance fields. |
+| GMX CCXT Middleware Server contract | fork | `tests/js/bridge-contract.test.mjs` | `test_bridge_call_rejects_unknown_method_with_serialized_error` | Verify `/call` returns a serialised CCXT-shaped error for an unknown method name. |
+| GMX CCXT Middleware Server contract | fork | `tests/js/bridge-contract.test.mjs` | `test_bridge_rejects_missing_or_invalid_bearer_token` | Verify server auth works and maps to CCXT `AuthenticationError`. |
+| Initialisation | fork (planned) | `tests/js/bridge-contract.test.mjs` | — | Not yet implemented. Would verify constructor validation (missing server URL) and successful bootstrap with URL, token, and timeout options. |
 | Market metadata | live | `tests/js/gmx-market-data.live.test.mjs` | `test_load_markets_live` | Load markets from live GMX through the GMX CCXT Middleware Server and verify the symbol map is populated. |
 | Market metadata | live | `tests/js/gmx-market-data.live.test.mjs` | `test_fetch_markets_live_returns_ccxt_market_shapes` | Verify `fetchMarkets()` returns a valid CCXT market array with ids, symbols, limits, and precision. |
 | Market metadata | live | `tests/js/gmx-market-data.live.test.mjs` | `test_fetch_currencies_live` | Verify `fetchCurrencies()` exposes the expected settlement and collateral tokens. |
@@ -269,8 +289,8 @@ This keeps the default CI deterministic while still supporting richer GMX integr
 | Account reads | live | `tests/js/gmx-account.live.test.mjs` | `test_fetch_positions_live_wallet_address_mode` | Verify `fetchPositions()` returns positions or a valid empty list for a target wallet. |
 | Account reads | live | `tests/js/gmx-account.live.test.mjs` | `test_fetch_open_orders_live_wallet_address_mode` | Verify `fetchOpenOrders()` returns open orders for a known wallet or a valid empty result. |
 | Account reads | live | `tests/js/gmx-account.live.test.mjs` | `test_fetch_my_trades_live_wallet_address_mode` | Verify `fetchMyTrades()` shape for a known wallet. |
-| Adapter error parity | live | `tests/js/gmx-errors.test.mjs` | `test_fetch_order_book_raises_not_supported` | Verify unsupported `fetchOrderBook()` maps to CCXT `NotSupported`. |
-| Adapter error parity | live | `tests/js/gmx-errors.test.mjs` | `test_fetch_closed_orders_raises_not_supported` | Verify unsupported `fetchClosedOrders()` maps to CCXT `NotSupported`. |
+| Adapter error parity | fork | `tests/js/gmx-errors.test.mjs` | `test_fetch_order_book_raises_not_supported` | Verify unsupported `fetchOrderBook()` maps to CCXT `NotSupported`. |
+| Adapter error parity | fork | `tests/js/gmx-errors.test.mjs` | `test_fetch_closed_orders_raises_not_supported` | Verify unsupported `fetchClosedOrders()` maps to CCXT `NotSupported`. |
 | Transaction construction | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_create_market_buy_order_builds_valid_request` | Verify `createMarketBuyOrder()` builds a valid order request and returns structured pending order metadata. |
 | Transaction construction | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_create_market_sell_order_builds_valid_request` | Verify `createMarketSellOrder()` request construction and payload serialisation. |
 | Transaction construction | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_create_limit_order_builds_valid_request` | Verify `createLimitOrder()` request shape, trigger fields, and symbol handling. |
@@ -282,8 +302,8 @@ This keeps the default CI deterministic while still supporting richer GMX integr
 | Pending lifecycle | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_fetch_order_by_id_after_creation` | Verify `fetchOrder()` works for a created pending order. |
 | Pending lifecycle | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_cancel_order_pending_order` | Verify `cancelOrder()` for a pending order on fork if fixture setup allows it. |
 | Pending lifecycle | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_cancel_orders_batch_pending_orders` | Verify `cancelOrders()` for multiple pending orders if fixture setup allows it. |
-| Account reads | fork | `tests/js/gmx-account.fork.test.mjs` | `test_fetch_balance_private_key_wallet` | Verify `fetchBalance()` via a funded fork EOA GMX CCXT Middleware Server instance. |
-| Account reads | fork | `tests/js/gmx-account.fork.test.mjs` | `test_fetch_positions_private_key_wallet` | Verify `fetchPositions()` on a funded fork EOA GMX CCXT Middleware Server instance. |
+| Account reads | fork (planned) | `tests/js/gmx-account.fork.test.mjs` | `test_fetch_balance_private_key_wallet` | Not yet implemented. Would verify `fetchBalance()` via a funded fork EOA GMX CCXT Middleware Server instance. |
+| Account reads | fork (planned) | `tests/js/gmx-account.fork.test.mjs` | `test_fetch_positions_private_key_wallet` | Not yet implemented. Would verify `fetchPositions()` on a funded fork EOA GMX CCXT Middleware Server instance. |
 | Margin and leverage | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_set_leverage_builds_valid_request` | Verify `setLeverage()` request construction, params, and validation. |
 | Margin and leverage | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_fetch_leverage_reads_current_value` | Verify `fetchLeverage()` returns CCXT-compatible leverage info. |
 | Margin and leverage | fork | `tests/js/gmx-trading.fork.test.mjs` | `test_add_margin_builds_valid_request` | Verify `addMargin()` request construction on fork without requiring full execution. |
