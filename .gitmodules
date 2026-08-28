@@ -5,3 +5,4 @@
 [submodule "web3-ethereum-defi"]
 	path = web3-ethereum-defi
 	url = https://github.com/tradingstrategy-ai/web3-ethereum-defi.git
+	branch = master
